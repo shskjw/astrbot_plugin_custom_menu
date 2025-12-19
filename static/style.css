@@ -1,42 +1,203 @@
-@font-face { font-family: 'MiaoTitle'; src: url('/fonts/title.ttf'); }
-@font-face { font-family: 'MiaoText'; src: url('/fonts/text.ttf'); }
+/* ================= 字体定义 ================= */
+@font-face { font-family: 'MiaoTitle'; src: url('/fonts/title.ttf'); font-display: swap; }
+@font-face { font-family: 'MiaoText'; src: url('/fonts/text.ttf'); font-display: swap; }
 
-body { margin: 0; background: #1a1a1a; color: #fff; font-family: 'MiaoText', sans-serif; display: flex; height: 100vh; overflow: hidden; }
-.sidebar { width: 300px; background: #2b2b2b; border-right: 1px solid #444; padding: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 10; overflow-y: auto; }
-.workspace { flex: 1; background: #111; overflow: auto; display: flex; justify-content: center; padding: 40px; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 20px 20px; }
-.canvas { width: 1000px; min-height: 1200px; background-color: #333; background-size: cover; background-position: center; position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.5); padding: 40px; box-sizing: border-box; transition: background-image 0.3s; }
-.header-area { margin-bottom: 60px; margin-top: 40px; }
-.main-title { font-family: 'MiaoTitle'; font-size: 70px; font-weight: bold; cursor: pointer; text-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-.sub-title { font-family: 'MiaoTitle'; font-size: 35px; color: #ddd; cursor: pointer; }
-.group-section { margin-bottom: 30px; }
-.group-title { font-size: 32px; color: #eee; margin-bottom: 10px; padding-left: 10px; cursor: pointer; }
-.group-box { background: rgba(0, 0, 0, 0.5); border-radius: 15px; padding: 15px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; min-height: 100px; backdrop-filter: blur(5px); }
-.item-card { display: flex; align-items: center; padding: 10px; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
-.item-card:hover { background: rgba(255,255,255,0.1); }
-.item-icon { width: 60px; height: 60px; object-fit: contain; margin-right: 15px; background: rgba(255,255,255,0.05); border-radius: 8px;}
-.item-info { display: flex; flex-direction: column; }
-.item-name { font-family: 'MiaoTitle'; font-size: 28px; font-weight: bold; color: #fff; }
-.item-desc { font-size: 18px; color: #aaa; }
-.add-item-btn, .add-group-btn { border: 2px dashed #555; border-radius: 8px; color: #888; cursor: pointer; display: flex; justify-content: center; align-items: center; }
-.add-item-btn { height: 80px; } .add-group-btn { padding: 20px; margin-top: 20px; font-size: 20px; }
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; justify-content: center; align-items: center; }
-.modal { background: #2d2d2d; padding: 25px; border-radius: 12px; width: 400px; }
-.form-row { margin-bottom: 15px; }
-.form-row label { display: block; color: #aaa; margin-bottom: 5px; font-size: 14px; }
-.form-row input, .form-row select { width: 100%; padding: 8px; background: #444; border: 1px solid #555; color: #fff; border-radius: 4px; box-sizing: border-box;}
-.btn-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-button { padding: 8px 16px; border-radius: 4px; cursor: pointer; border: none; font-weight: bold; }
-.btn-primary { background: #007acc; color: white; }
-.btn-save { background: #28a745; color: white; padding: 15px; font-size: 18px; margin-top: 10px; }
-.btn-danger { background: #c0392b; color: white; }
-.btn-cancel { background: #555; color: white; }
-.color-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-input[type="color"] { -webkit-appearance: none; border: none; width: 32px; height: 32px; border-radius: 50%; padding: 0; overflow: hidden; cursor: pointer; box-shadow: 0 0 0 1px #555; }
-input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-input[type="color"]::-webkit-color-swatch { border: none; }
-.color-input { flex: 1; font-family: monospace; text-transform: uppercase; }
-.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
-.swatch { width: 20px; height: 20px; border-radius: 4px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: transform 0.1s; }
-.swatch:hover { transform: scale(1.2); border-color: #fff; }
-.btn-sm { background: #444; color: #ccc; border: 1px solid #555; padding: 6px 10px; cursor: pointer; border-radius: 4px; font-size: 12px; }
-.btn-sm:hover { background: #555; color: #fff; }
+/* ================= 核心变量 ================= */
+:root {
+    --bg-app: #121212;
+    --bg-sidebar: #1e1e1e;
+    --bg-input: #2d2d2d;
+    --border-color: #333;
+    --text-main: #e0e0e0;
+    --text-sub: #aaa;
+    --accent: #0e639c;
+    --danger: #c53030;
+}
+
+/* ================= 全局重置 ================= */
+* { box-sizing: border-box; outline: none; }
+
+body {
+    margin: 0; background-color: var(--bg-app); color: var(--text-main);
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; height: 100vh; overflow: hidden; font-size: 14px;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ================= 侧边栏布局 (修复滚动) ================= */
+.sidebar {
+    width: 400px; background-color: var(--bg-sidebar); border-right: 1px solid #000;
+    display: flex; flex-direction: column; z-index: 1000;
+    box-shadow: 4px 0 15px rgba(0,0,0,0.3);
+}
+
+.sidebar-header {
+    flex: 0 0 auto; padding: 15px 20px;
+    background-color: #252526; border-bottom: 1px solid var(--border-color);
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 1001;
+}
+.sidebar-header h3 { margin: 0; font-size: 16px; font-weight: 600; color: #fff; }
+
+.sidebar-content {
+    flex: 1; overflow-y: auto; padding: 20px;
+}
+
+.section {
+    background: #262626; border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 15px; margin-bottom: 15px;
+}
+
+.section-title {
+    font-size: 12px; font-weight: bold; color: var(--text-sub);
+    margin-bottom: 15px; text-transform: uppercase;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #333; padding-bottom: 8px;
+}
+
+/* ================= 表单控件 (双列布局) ================= */
+.form-row { margin-bottom: 12px; position: relative; }
+.form-row label { display: block; color: var(--text-sub); margin-bottom: 6px; font-size: 12px; }
+
+/* 双列 Grid */
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+
+input[type="text"], input[type="number"], select {
+    width: 100%; height: 36px; padding: 0 10px;
+    background-color: var(--bg-input) !important;
+    border: 1px solid #444 !important;
+    color: #fff !important; border-radius: 4px;
+    font-size: 13px; appearance: none;
+}
+input:focus, select:focus { border-color: var(--accent) !important; background-color: #333 !important; }
+
+/* 颜色选择器 */
+.color-picker-row {
+    display: flex; align-items: center; gap: 8px;
+    background-color: var(--bg-input); padding: 4px;
+    border-radius: 4px; border: 1px solid #444; height: 36px;
+}
+input[type="color"] {
+    width: 26px; height: 26px; border: none; padding: 0;
+    background: none; cursor: pointer; border-radius: 4px;
+}
+.color-value {
+    flex: 1; border: none !important; background: transparent !important;
+    font-family: monospace; color: #fff !important; text-transform: uppercase;
+    height: 100%;
+}
+
+/* 按钮 */
+.btn {
+    padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
+    font-size: 13px; color: #fff; transition: all 0.2s; font-weight: 500;
+}
+.btn-primary { background-color: var(--accent); }
+.btn-primary:hover { background-color: #1177bb; transform: translateY(-1px); }
+.btn-secondary { background-color: #383838; border: 1px solid #555; }
+.btn-secondary:hover { background-color: #444; color: #fff; }
+.btn-danger { background-color: var(--danger); }
+.btn-block { width: 100%; display: block; margin-top: 5px; }
+
+.icon-btn {
+    padding: 2px 8px; font-size: 12px; background-color: #383838;
+    border-radius: 3px; color: #ccc; cursor: pointer; border: 1px solid #555;
+    transition: all 0.2s;
+}
+.icon-btn:hover { color: #fff; background-color: #555; border-color: #777; }
+
+/* ================= 画布区域 (修复图片显示) ================= */
+.workspace {
+    flex: 1; background-color: #000; overflow: auto;
+    display: flex; justify-content: center; padding: 60px;
+    background-image: radial-gradient(#333 1px, transparent 1px); background-size: 20px 20px;
+    z-index: 1;
+}
+
+.canvas {
+    width: 1000px;
+    min-height: 1200px;
+    background-color: #222;
+    /* 🚀 关键修复：让长图完整显示，不被截断 */
+    background-size: 100% auto;
+    background-repeat: no-repeat;
+    background-position: top center;
+
+    position: relative;
+    box-shadow: 0 0 60px rgba(0,0,0,0.8);
+    padding: 40px;
+    transform-origin: top center;
+    z-index: 2;
+    border-radius: 4px;
+}
+
+/* ================= 拖拽组件 ================= */
+.draggable-widget {
+    position: absolute; cursor: grab; user-select: none;
+    border: 1px dashed transparent; padding: 4px 8px; z-index: 500;
+    white-space: nowrap; line-height: 1.2;
+    transition: border 0.1s, background 0.1s;
+}
+.draggable-widget:hover { border: 1px dashed rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
+.draggable-widget.selected { border: 1px solid var(--accent); background: rgba(14, 99, 156, 0.2); cursor: grabbing; }
+
+.resize-handle {
+    display: none; position: absolute; right: -5px; bottom: -5px;
+    width: 12px; height: 12px; background: var(--accent);
+    border: 2px solid #fff; cursor: se-resize; border-radius: 50%;
+    z-index: 501; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.draggable-widget.selected .resize-handle { display: block; }
+
+/* ================= 预览元素 (Miao UI) ================= */
+.header-area { margin-bottom: 50px; margin-top: 20px; width: 100%; position: relative; pointer-events: none; }
+.header-area * { pointer-events: auto; } /* 允许文字点击 */
+
+.main-title {
+    font-family: 'MiaoTitle'; font-weight: bold; margin: 0 0 10px 0;
+    text-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; line-height: 1.2;
+    transition: opacity 0.2s;
+}
+.main-title:hover { opacity: 0.8; }
+.sub-title { font-family: 'MiaoTitle'; opacity: 0.8; margin: 0; cursor: pointer; }
+
+.group-box { margin-bottom: 30px; }
+.group-header {
+    font-family: 'MiaoText'; font-size: 28px; margin-bottom: 15px; padding-left: 12px;
+    border-left: 5px solid rgba(255,255,255,0.5); cursor: pointer; position: relative; z-index: 50;
+    transition: all 0.2s;
+}
+.group-header:hover { padding-left: 15px; border-left-color: var(--accent); }
+
+.grid-container { display: grid; gap: 15px; background: rgba(0,0,0,0.4); padding: 20px; border-radius: 16px; backdrop-filter: blur(8px); }
+.grid-item {
+    display: flex; align-items: center; padding: 15px;
+    background: rgba(255,255,255,0.08); border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05); cursor: pointer;
+    transition: transform 0.2s, background 0.2s; min-height: 80px;
+}
+.grid-item:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); transform: translateY(-2px); }
+.grid-item.no-icon { justify-content: center; text-align: center; } .grid-item.no-icon img { display: none; }
+.grid-item img { width: 50px; height: 50px; margin-right: 15px; object-fit: contain; }
+.item-text { flex: 1; overflow: hidden; }
+.item-text h4 { margin: 0; font-family: 'MiaoTitle'; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-text p { margin: 5px 0 0 0; font-size: 16px; opacity: 0.7; font-family: 'MiaoText'; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ================= 分组列表与弹窗 ================= */
+.group-list { margin-top: 10px; }
+.group-item {
+    display: flex; justify-content: space-between; align-items: center;
+    background-color: #333; padding: 12px; margin-bottom: 8px;
+    border-radius: 6px; border: 1px solid #444; cursor: pointer;
+    transition: all 0.2s;
+}
+.group-item:hover { background-color: #3a3a3a; border-color: #666; transform: translateX(2px); }
+.group-actions { display: flex; align-items: center; gap: 6px; }
+
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.8); z-index: 2000; display: none; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+.modal { background-color: #252526; width: 450px; padding: 30px; border-radius: 12px; border: 1px solid #555; box-shadow: 0 20px 60px #000; }
+.modal h3 { margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 15px; color: #fff; }
+.tip-text { font-size: 12px; color: #aaa; margin-bottom: 10px; font-style: italic; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 4px; }

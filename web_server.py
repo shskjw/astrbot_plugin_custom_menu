@@ -5,15 +5,18 @@ import traceback
 from pathlib import Path
 from multiprocessing import Queue
 
-# 确保 sys.path 包含插件目录
 PLUGIN_DIR = Path(__file__).parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 
 def run_server(config_dict, status_queue):
-    """独立进程入口"""
+    """
+    Web 服务子进程入口。
+    使用 Quart + Hypercorn 运行。
+    """
     try:
+        # 强制刷新输出流，确保日志可见
         sys.stdout.reconfigure(line_buffering=True)
         sys.stderr.reconfigure(line_buffering=True)
 
@@ -21,6 +24,7 @@ def run_server(config_dict, status_queue):
         from hypercorn.config import Config
         from hypercorn.asyncio import serve
 
+        # 延迟导入业务逻辑
         try:
             from storage import load_menu, save_menu, get_assets_list, ASSETS_DIR, FONTS_DIR
             from renderer.menu import render_menu
@@ -33,7 +37,7 @@ def run_server(config_dict, status_queue):
                     static_folder=str(PLUGIN_DIR / "static"))
         app.secret_key = os.urandom(24)
 
-        # --- 路由定义 ---
+        # --- 路由 ---
         @app.before_request
         async def check_auth():
             if request.endpoint in ["login", "static", "serve_raw_assets", "serve_fonts", "health", "ping"]: return
@@ -77,7 +81,6 @@ def run_server(config_dict, status_queue):
         async def get_assets():
             return jsonify(get_assets_list())
 
-        # 新增：获取字体列表
         @app.route("/api/fonts", methods=["GET"])
         async def get_fonts():
             fonts = [f.name for f in FONTS_DIR.glob("*") if f.suffix.lower() in ['.ttf', '.otf', '.ttc']]
@@ -89,11 +92,10 @@ def run_server(config_dict, status_queue):
             form = await request.form
             u_type = form.get("type")
             u_file = files.get("file")
+
             if not u_file: return jsonify({"error": "No file"}), 400
 
             filename = u_file.filename
-
-            # 处理不同类型的上传
             if u_type == "background":
                 target = ASSETS_DIR / "backgrounds" / filename
             elif u_type == "icon":
@@ -125,7 +127,7 @@ def run_server(config_dict, status_queue):
             if ".." in path: return "Forbidden", 403
             return await send_from_directory(FONTS_DIR, path)
 
-        # --- 启动逻辑 ---
+        # --- Hypercorn 启动 ---
         async def start_async():
             port = int(config_dict.get("web_port", 9876))
             host = config_dict.get("web_host", "0.0.0.0")
@@ -136,9 +138,8 @@ def run_server(config_dict, status_queue):
             cfg.accesslog = None
             cfg.errorlog = None
 
-            print(f"✅ [子进程] 监听: {host}:{port}")
+            print(f"✅ [Web进程] 启动监听: {host}:{port}")
             status_queue.put("SUCCESS")
-
             await serve(app, cfg)
 
         asyncio.run(start_async())

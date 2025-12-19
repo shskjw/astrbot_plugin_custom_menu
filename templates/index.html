@@ -2,101 +2,176 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>菜单编辑器 - 字体版</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>菜单编辑器 v8.3</title>
+    <!-- 加版本号防止缓存 -->
+    <link rel="stylesheet" href="/static/style.css?v=1.1.0">
 </head>
 <body>
 
 <div class="sidebar">
-    <h3>🛠️ 菜单设置</h3>
+    <div class="sidebar-header">
+        <h3>🛠️ 菜单配置</h3>
+        <button class="btn btn-primary" onclick="saveAll()">💾 保存并生成</button>
+    </div>
 
-    <!-- 背景设置 -->
-    <div class="form-row">
-        <label>背景图片</label>
-        <select id="bgSelect" onchange="updateBg(this.value)"></select>
-        <div style="display:flex; gap:5px; margin-top:5px;">
-            <button class="btn-sm" onclick="document.getElementById('bgUpload').click()">📤 上传背景</button>
-            <input type="file" id="bgUpload" hidden onchange="uploadFile('background', this)">
+    <div class="sidebar-content">
+        <!-- 1. 布局与背景 -->
+        <div class="section">
+            <div class="section-title">布局与背景</div>
+            <div class="form-row">
+                <label>背景图片 (自动撑开画布)</label>
+                <div style="display:flex; gap:5px;">
+                    <select id="bgSelect" onchange="updateBg(this.value)"></select>
+                    <button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button>
+                    <input type="file" id="bgUp" hidden onchange="uploadFile('background', this)">
+                </div>
+            </div>
+            <div class="form-row">
+                <label>布局列数</label>
+                <select id="columnSelect" onchange="updateMeta('layout_columns', parseInt(this.value))">
+                    <option value="1">1 列 (单列)</option>
+                    <option value="2">2 列</option>
+                    <option value="3">3 列 (默认)</option>
+                    <option value="4">4 列</option>
+                    <option value="5">5 列</option>
+                </select>
+            </div>
         </div>
-    </div>
 
-    <!-- 字体设置 (新增) -->
-    <div class="form-row">
-        <label>🔤 标题字体</label>
-        <select id="titleFontSelect" onchange="updateFont('title', this.value)"></select>
-    </div>
-
-    <div class="form-row">
-        <label>🔤 正文字体</label>
-        <select id="textFontSelect" onchange="updateFont('text', this.value)"></select>
-    </div>
-
-    <div class="form-row">
-        <button class="btn-sm" style="width:100%" onclick="document.getElementById('fontUpload').click()">📤 上传新字体 (.ttf/.otf)</button>
-        <input type="file" id="fontUpload" hidden accept=".ttf,.otf,.ttc" onchange="uploadFile('font', this)">
-    </div>
-
-    <hr style="border:0; border-top:1px solid #444; margin: 15px 0;">
-
-    <!-- 颜色设置 -->
-    <div class="form-row">
-        <label>🎨 主标题颜色</label>
-        <div class="color-row">
-            <input type="color" id="titleColorPick" oninput="updateColor('title', this.value)">
-            <input type="text" id="titleColorText" class="color-input" onchange="updateColor('title', this.value)">
+        <!-- 2. 标题设置 -->
+        <div class="section">
+            <div class="section-title">标题设置</div>
+            <div class="form-row">
+                <label>对齐方式</label>
+                <select id="alignSelect" onchange="updateMeta('title_align', this.value)">
+                    <option value="left">⬅ 居左</option>
+                    <option value="center">⬇ 居中</option>
+                    <option value="right">➡ 居右</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>主标题 (内容 / 字号)</label>
+                <input type="text" id="mainTitleInput" oninput="updateMeta('title', this.value)" style="margin-bottom:5px">
+                <input type="number" id="titleSizeInput" placeholder="字号" oninput="updateMeta('title_size', this.value)">
+            </div>
+            <div class="form-row">
+                <label>副标题</label>
+                <input type="text" id="subTitleInput" oninput="updateMeta('sub_title', this.value)">
+            </div>
         </div>
-        <div class="swatches" id="titleSwatches"></div>
-    </div>
 
-    <div class="form-row">
-        <label>🎨 正文颜色</label>
-        <div class="color-row">
-            <input type="color" id="textColorPick" oninput="updateColor('text', this.value)">
-            <input type="text" id="textColorText" class="color-input" onchange="updateColor('text', this.value)">
+        <!-- 3. 自定义文本框 -->
+        <div class="section">
+            <div class="section-title">
+                自由文本
+                <button class="icon-btn" onclick="addCustomWidget()">+ 添加</button>
+            </div>
+            <div class="tip-text">💡 拖动文本移动，拖动右下角缩放</div>
+
+            <div id="widgetEditor" style="display:none; background:#333; padding:10px; border-radius:4px; border:1px solid #0e639c;">
+                <label style="color:#0e639c; font-size:12px; margin-bottom:5px; display:block;">当前选中项</label>
+                <input id="widText" placeholder="内容" oninput="updateWidget('text', this.value)" style="margin-bottom:5px">
+                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                    <input type="number" id="widSize" placeholder="大小" oninput="updateWidget('size', this.value)" style="width:60px">
+                    <div class="color-picker-row" style="flex:unset; width:40px; padding:0; border:none;">
+                        <input type="color" id="widColor" oninput="updateWidget('color', this.value)" style="width:100%; height:32px;">
+                    </div>
+                    <select id="widFont" onchange="updateWidget('font', this.value)" style="flex:1"></select>
+                </div>
+                <button class="btn btn-danger btn-block" onclick="deleteWidget()">删除此文本</button>
+            </div>
         </div>
-        <div class="swatches" id="textSwatches"></div>
+
+        <!-- 4. 配色字体 -->
+        <div class="section">
+            <div class="section-title">全局配色</div>
+
+            <div class="form-row">
+                <label>🎨 主标题颜色</label>
+                <div class="color-picker-row">
+                    <input type="color" id="colTitleP" oninput="updateColor('title_color', this.value, 'pick')">
+                    <input type="text" id="colTitleT" class="color-value" oninput="updateColor('title_color', this.value, 'text')">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>🎨 副标题颜色</label>
+                <div class="color-picker-row">
+                    <input type="color" id="colSubP" oninput="updateColor('subtitle_color', this.value, 'pick')">
+                    <input type="text" id="colSubT" class="color-value" oninput="updateColor('subtitle_color', this.value, 'text')">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>🎨 分组标题颜色</label>
+                <div class="color-picker-row">
+                    <input type="color" id="colGrpP" oninput="updateColor('group_title_color', this.value, 'pick')">
+                    <input type="text" id="colGrpT" class="color-value" oninput="updateColor('group_title_color', this.value, 'text')">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>🎨 功能名颜色</label>
+                <div class="color-picker-row">
+                    <input type="color" id="colNameP" oninput="updateColor('item_name_color', this.value, 'pick')">
+                    <input type="text" id="colNameT" class="color-value" oninput="updateColor('item_name_color', this.value, 'text')">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>🎨 描述文字颜色</label>
+                <div class="color-picker-row">
+                    <input type="color" id="colDescP" oninput="updateColor('item_desc_color', this.value, 'pick')">
+                    <input type="text" id="colDescT" class="color-value" oninput="updateColor('item_desc_color', this.value, 'text')">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label>字体设置</label>
+                <select id="titleFontSelect" onchange="updateFont('title', this.value)" style="margin-bottom:5px"></select>
+                <select id="textFontSelect" onchange="updateFont('text', this.value)"></select>
+            </div>
+            <button class="btn btn-secondary btn-block" style="margin-top:5px" onclick="document.getElementById('fontUp').click()">📤 上传字体</button>
+            <input type="file" id="fontUp" hidden accept=".ttf,.otf" onchange="uploadFile('font', this)">
+        </div>
+
+        <!-- 5. 分组 -->
+        <div class="section">
+            <div class="section-title">
+                分组内容
+                <button class="icon-btn" onclick="addGroup()">+ 新增</button>
+            </div>
+            <div id="groupList" class="group-list"></div>
+        </div>
+
+        <!-- 6. 资源 -->
+        <div class="section">
+            <div class="section-title">资源</div>
+            <button class="btn btn-secondary btn-block" onclick="document.getElementById('iconUp').click()">📤 上传图标</button>
+            <input type="file" id="iconUp" hidden onchange="uploadFile('icon', this)">
+        </div>
+
     </div>
-
-    <hr style="border:0; border-top:1px solid #444; margin: 15px 0;">
-
-    <div class="form-row">
-        <label>图标库</label>
-        <button class="btn-sm" style="width:100%" onclick="document.getElementById('iconUpload').click()">📤 上传图标</button>
-        <input type="file" id="iconUpload" hidden onchange="uploadFile('icon', this)">
-    </div>
-
-    <div style="flex:1"></div>
-    <button class="btn-save" onclick="saveAll()">💾 保存并生效</button>
 </div>
 
 <div class="workspace">
     <div id="canvas" class="canvas"></div>
 </div>
 
-<!-- 弹窗 -->
 <div id="editModal" class="modal-overlay">
     <div class="modal">
         <h3 id="modalTitle">编辑</h3>
-        <div id="field-name" class="form-row">
-            <label>标题 / 名称</label>
-            <input id="inp-name">
-        </div>
-        <div id="field-desc" class="form-row">
-            <label>描述</label>
-            <input id="inp-desc">
-        </div>
-        <div id="field-icon" class="form-row">
-            <label>图标</label>
-            <select id="inp-icon" class="icon-select"></select>
-        </div>
-        <div class="btn-row">
-            <button class="btn-danger" id="btn-delete" onclick="deleteCurrent()">🗑️ 删除</button>
-            <button class="btn-cancel" onclick="closeModal()">取消</button>
-            <button class="btn-primary" onclick="saveModal()">✅ 确定</button>
+        <div class="form-row"><label>名称</label><input id="editName"></div>
+        <div class="form-row" id="rowDesc"><label>描述</label><input id="editDesc"></div>
+        <div class="form-row" id="rowIcon"><label>图标</label><select id="editIcon"></select></div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+            <button class="btn btn-danger" onclick="deleteCurrentItem()">删除</button>
+            <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveModal()">确定</button>
         </div>
     </div>
 </div>
 
-<script src="/static/editor.js"></script>
+<script src="/static/editor.js?v=8.3.0"></script>
 </body>
 </html>

@@ -2,57 +2,93 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Miao Menu Editor v3</title>
+    <title>菜单编辑器 - 字体版</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-<!-- 左侧工具栏 -->
 <div class="sidebar">
-    <h3>🛠️ 全局设置</h3>
+    <h3>🛠️ 菜单设置</h3>
 
+    <!-- 背景设置 -->
     <div class="form-row">
         <label>背景图片</label>
         <select id="bgSelect" onchange="updateBg(this.value)"></select>
-        <input type="file" id="bgUpload" hidden onchange="uploadFile('background', this)">
-        <button class="btn-primary" style="width:100%; margin-top:5px;" onclick="document.getElementById('bgUpload').click()">📤 上传背景</button>
+        <div style="display:flex; gap:5px; margin-top:5px;">
+            <button class="btn-sm" onclick="document.getElementById('bgUpload').click()">📤 上传背景</button>
+            <input type="file" id="bgUpload" hidden onchange="uploadFile('background', this)">
+        </div>
+    </div>
+
+    <!-- 字体设置 (新增) -->
+    <div class="form-row">
+        <label>🔤 标题字体</label>
+        <select id="titleFontSelect" onchange="updateFont('title', this.value)"></select>
     </div>
 
     <div class="form-row">
+        <label>🔤 正文字体</label>
+        <select id="textFontSelect" onchange="updateFont('text', this.value)"></select>
+    </div>
+
+    <div class="form-row">
+        <button class="btn-sm" style="width:100%" onclick="document.getElementById('fontUpload').click()">📤 上传新字体 (.ttf/.otf)</button>
+        <input type="file" id="fontUpload" hidden accept=".ttf,.otf,.ttc" onchange="uploadFile('font', this)">
+    </div>
+
+    <hr style="border:0; border-top:1px solid #444; margin: 15px 0;">
+
+    <!-- 颜色设置 -->
+    <div class="form-row">
+        <label>🎨 主标题颜色</label>
+        <div class="color-row">
+            <input type="color" id="titleColorPick" oninput="updateColor('title', this.value)">
+            <input type="text" id="titleColorText" class="color-input" onchange="updateColor('title', this.value)">
+        </div>
+        <div class="swatches" id="titleSwatches"></div>
+    </div>
+
+    <div class="form-row">
+        <label>🎨 正文颜色</label>
+        <div class="color-row">
+            <input type="color" id="textColorPick" oninput="updateColor('text', this.value)">
+            <input type="text" id="textColorText" class="color-input" onchange="updateColor('text', this.value)">
+        </div>
+        <div class="swatches" id="textSwatches"></div>
+    </div>
+
+    <hr style="border:0; border-top:1px solid #444; margin: 15px 0;">
+
+    <div class="form-row">
         <label>图标库</label>
+        <button class="btn-sm" style="width:100%" onclick="document.getElementById('iconUpload').click()">📤 上传图标</button>
         <input type="file" id="iconUpload" hidden onchange="uploadFile('icon', this)">
-        <button class="btn-primary" style="width:100%" onclick="document.getElementById('iconUpload').click()">📤 上传新图标</button>
     </div>
 
     <div style="flex:1"></div>
     <button class="btn-save" onclick="saveAll()">💾 保存并生效</button>
 </div>
 
-<!-- 主画布 -->
 <div class="workspace">
     <div id="canvas" class="canvas"></div>
 </div>
 
-<!-- 编辑弹窗 -->
+<!-- 弹窗 -->
 <div id="editModal" class="modal-overlay">
     <div class="modal">
-        <h3 id="modalTitle">编辑内容</h3>
-
+        <h3 id="modalTitle">编辑</h3>
         <div id="field-name" class="form-row">
             <label>标题 / 名称</label>
             <input id="inp-name">
         </div>
-
         <div id="field-desc" class="form-row">
             <label>描述</label>
             <input id="inp-desc">
         </div>
-
         <div id="field-icon" class="form-row">
             <label>图标</label>
             <select id="inp-icon" class="icon-select"></select>
         </div>
-
         <div class="btn-row">
             <button class="btn-danger" id="btn-delete" onclick="deleteCurrent()">🗑️ 删除</button>
             <button class="btn-cancel" onclick="closeModal()">取消</button>

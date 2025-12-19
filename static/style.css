@@ -1,10 +1,13 @@
-body { margin: 0; background: #1a1a1a; font-family: "Microsoft YaHei", sans-serif; color: #fff; display: flex; height: 100vh; overflow: hidden; }
-.sidebar { width: 300px; background: #2b2b2b; border-right: 1px solid #444; padding: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 10; }
+@font-face { font-family: 'MiaoTitle'; src: url('/fonts/title.ttf'); }
+@font-face { font-family: 'MiaoText'; src: url('/fonts/text.ttf'); }
+
+body { margin: 0; background: #1a1a1a; color: #fff; font-family: 'MiaoText', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+.sidebar { width: 300px; background: #2b2b2b; border-right: 1px solid #444; padding: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 10; overflow-y: auto; }
 .workspace { flex: 1; background: #111; overflow: auto; display: flex; justify-content: center; padding: 40px; background-image: radial-gradient(#333 1px, transparent 1px); background-size: 20px 20px; }
 .canvas { width: 1000px; min-height: 1200px; background-color: #333; background-size: cover; background-position: center; position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.5); padding: 40px; box-sizing: border-box; transition: background-image 0.3s; }
 .header-area { margin-bottom: 60px; margin-top: 40px; }
-.main-title { font-size: 70px; font-weight: bold; cursor: pointer; text-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-.sub-title { font-size: 35px; color: #ddd; cursor: pointer; }
+.main-title { font-family: 'MiaoTitle'; font-size: 70px; font-weight: bold; cursor: pointer; text-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+.sub-title { font-family: 'MiaoTitle'; font-size: 35px; color: #ddd; cursor: pointer; }
 .group-section { margin-bottom: 30px; }
 .group-title { font-size: 32px; color: #eee; margin-bottom: 10px; padding-left: 10px; cursor: pointer; }
 .group-box { background: rgba(0, 0, 0, 0.5); border-radius: 15px; padding: 15px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; min-height: 100px; backdrop-filter: blur(5px); }
@@ -12,7 +15,7 @@ body { margin: 0; background: #1a1a1a; font-family: "Microsoft YaHei", sans-seri
 .item-card:hover { background: rgba(255,255,255,0.1); }
 .item-icon { width: 60px; height: 60px; object-fit: contain; margin-right: 15px; background: rgba(255,255,255,0.05); border-radius: 8px;}
 .item-info { display: flex; flex-direction: column; }
-.item-name { font-size: 28px; font-weight: bold; color: #fff; }
+.item-name { font-family: 'MiaoTitle'; font-size: 28px; font-weight: bold; color: #fff; }
 .item-desc { font-size: 18px; color: #aaa; }
 .add-item-btn, .add-group-btn { border: 2px dashed #555; border-radius: 8px; color: #888; cursor: pointer; display: flex; justify-content: center; align-items: center; }
 .add-item-btn { height: 80px; } .add-group-btn { padding: 20px; margin-top: 20px; font-size: 20px; }
@@ -27,3 +30,13 @@ button { padding: 8px 16px; border-radius: 4px; cursor: pointer; border: none; f
 .btn-save { background: #28a745; color: white; padding: 15px; font-size: 18px; margin-top: 10px; }
 .btn-danger { background: #c0392b; color: white; }
 .btn-cancel { background: #555; color: white; }
+.color-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+input[type="color"] { -webkit-appearance: none; border: none; width: 32px; height: 32px; border-radius: 50%; padding: 0; overflow: hidden; cursor: pointer; box-shadow: 0 0 0 1px #555; }
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: none; }
+.color-input { flex: 1; font-family: monospace; text-transform: uppercase; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { width: 20px; height: 20px; border-radius: 4px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); transition: transform 0.1s; }
+.swatch:hover { transform: scale(1.2); border-color: #fff; }
+.btn-sm { background: #444; color: #ccc; border: 1px solid #555; padding: 6px 10px; cursor: pointer; border-radius: 4px; font-size: 12px; }
+.btn-sm:hover { background: #555; color: #fff; }

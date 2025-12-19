@@ -1,115 +1,124 @@
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from pathlib import Path
 from ..storage import load_menu
-from .base import safe_font, safe_open_image
 
 BASE_DIR = Path(__file__).parents[1]
 ASSETS_DIR = BASE_DIR / "data" / "assets"
 FONTS_DIR = BASE_DIR / "fonts"
 
-# 布局常量
 CANVAS_WIDTH = 1000
 PADDING_X = 40
-GROUP_GAP = 30  # 分组之间的垂直间距
-ITEM_H = 100  # 单个功能项高度
-COLUMNS = 3  # 3列布局
-ITEM_GAP_X = 15  # 功能项水平间距
-ITEM_GAP_Y = 15  # 功能项垂直间距
+GROUP_GAP = 30
+ITEM_H = 100
+COLUMNS = 3
+ITEM_GAP_X = 15
+ITEM_GAP_Y = 15
+
+
+def safe_font(path, size):
+    try:
+        return ImageFont.truetype(str(path), size)
+    except:
+        return ImageFont.load_default()
 
 
 def render_menu(save_path: Path):
     data = load_menu()
 
-    # 1. 预计算总高度
-    current_y = 350  # 头部留空 (标题区域)
+    title_color = data.get("title_color", "#FFFFFF")
+    text_color = data.get("text_color", "#FFFFFF")
 
-    # 计算内容区域高度
+    # 获取字体配置
+    # 默认兜底 title.ttf 和 text.ttf (如果存在)
+    t_font_file = data.get("title_font", "title.ttf")
+    txt_font_file = data.get("text_font", "text.ttf")
+
+    current_y = 350
     for group in data.get("groups", []):
-        current_y += 60  # 分组标题高度
+        current_y += 60
         items_count = len(group.get("items", []))
-        rows = (items_count + COLUMNS - 1) // COLUMNS
-        if rows == 0: rows = 1
-
-        group_h = rows * ITEM_H + (rows - 1) * ITEM_GAP_Y + 40  # 40是组内padding
+        if items_count > 0:
+            rows = (items_count + COLUMNS - 1) // COLUMNS
+            group_h = rows * ITEM_H + (rows - 1) * ITEM_GAP_Y + 40
+        else:
+            group_h = 0
         current_y += group_h + GROUP_GAP
+    total_height = current_y + 50
 
-    total_height = current_y + 50  # 底部留空
+    base = Image.new("RGBA", (CANVAS_WIDTH, total_height), (30, 30, 30, 255))
 
-    # 2. 创建画布
-    canvas = Image.new("RGBA", (CANVAS_WIDTH, total_height), (30, 30, 30, 255))
-
-    # 3. 绘制背景
     bg_name = data.get("background", "")
     bg_path = ASSETS_DIR / "backgrounds" / bg_name
     if bg_name and bg_path.exists():
-        bg = Image.open(bg_path).convert("RGBA")
-        # 居中裁剪填充
-        ratio = max(CANVAS_WIDTH / bg.width, total_height / bg.height)
-        bg = bg.resize((int(bg.width * ratio), int(bg.height * ratio)))
-        # 裁剪中心
-        left = (bg.width - CANVAS_WIDTH) // 2
-        top = (bg.height - total_height) // 2
-        bg = bg.crop((left, top, left + CANVAS_WIDTH, top + total_height))
-        # 模糊处理
-        bg = bg.filter(ImageFilter.GaussianBlur(3))
-        canvas.paste(bg, (0, 0))
+        try:
+            bg = Image.open(bg_path).convert("RGBA")
+            ratio = max(CANVAS_WIDTH / bg.width, total_height / bg.height)
+            bg = bg.resize((int(bg.width * ratio), int(bg.height * ratio)), Image.Resampling.LANCZOS)
+            left = (bg.width - CANVAS_WIDTH) // 2
+            top = (bg.height - total_height) // 2
+            bg = bg.crop((left, top, left + CANVAS_WIDTH, top + total_height))
+            bg = bg.filter(ImageFilter.GaussianBlur(3))
+            base.paste(bg, (0, 0))
+        except:
+            pass
 
-    draw = ImageDraw.Draw(canvas)
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    draw_ov = ImageDraw.Draw(overlay)
 
-    # 字体加载 (请确保 fonts 目录下有 title.ttf 和 text.ttf)
-    font_main = safe_font(FONTS_DIR / "title.ttf", 70)  # 主标题
-    font_sub = safe_font(FONTS_DIR / "title.ttf", 35)  # 副标题
-    font_grp = safe_font(FONTS_DIR / "text.ttf", 32)  # 分组标题
-    font_item = safe_font(FONTS_DIR / "title.ttf", 28)  # 项名称
-    font_desc = safe_font(FONTS_DIR / "text.ttf", 18)  # 项描述
+    # 加载动态字体
+    font_main = safe_font(FONTS_DIR / t_font_file, 70)
+    font_sub = safe_font(FONTS_DIR / txt_font_file, 35)
+    font_grp = safe_font(FONTS_DIR / txt_font_file, 32)
+    font_item = safe_font(FONTS_DIR / t_font_file, 28)
+    font_desc = safe_font(FONTS_DIR / txt_font_file, 18)
 
-    # 4. 绘制头部
-    draw.text((50, 80), data.get("title", "帮助"), font=font_main, fill=data.get("title_color", "#fff"))
-    draw.text((50, 170), data.get("sub_title", "描述"), font=font_sub, fill="#ddd")
+    draw_ov.text((50, 80), data.get("title", "功能菜单"), font=font_main, fill=title_color)
+    draw_ov.text((50, 170), data.get("sub_title", ""), font=font_sub, fill="#DDDDDD")
 
-    # 5. 绘制分组
     cursor_y = 280
-
     item_width = (CANVAS_WIDTH - 2 * PADDING_X - (COLUMNS - 1) * ITEM_GAP_X) // COLUMNS
 
     for group in data.get("groups", []):
-        # 绘制分组标题
-        draw.text((PADDING_X + 10, cursor_y), group.get("title", "分组"), font=font_grp, fill="#eee")
-        cursor_y += 50
+        title = group.get("title", "分组")
+        draw_ov.text((PADDING_X + 10, cursor_y), title, font=font_grp, fill=text_color)
 
-        # 计算该组背景高度
+        cursor_y += 50
         items = group.get("items", [])
+        if not items:
+            cursor_y += GROUP_GAP
+            continue
+
         rows = (len(items) + COLUMNS - 1) // COLUMNS
-        if rows == 0: rows = 1
         box_height = rows * ITEM_H + (rows - 1) * ITEM_GAP_Y + 30
 
-        # 绘制半透明黑底框
-        draw.rounded_rectangle(
+        draw_ov.rounded_rectangle(
             (PADDING_X, cursor_y, CANVAS_WIDTH - PADDING_X, cursor_y + box_height),
             radius=15,
-            fill=(0, 0, 0, 120)  # 半透明黑色
+            fill=(0, 0, 0, 120)
         )
 
-        # 绘制每一个Item
         start_item_y = cursor_y + 15
         for i, item in enumerate(items):
             row = i // COLUMNS
             col = i % COLUMNS
-
             x = PADDING_X + 15 + col * (item_width + ITEM_GAP_X)
             y = start_item_y + row * (ITEM_H + ITEM_GAP_Y)
 
-            # 图标
             icon_name = item.get("icon", "")
-            if icon_name:
-                icon = safe_open_image(ASSETS_DIR / "icons" / icon_name, (60, 60))
-                canvas.paste(icon, (x, y + 10), icon)
+            icon_path = ASSETS_DIR / "icons" / icon_name
+            if icon_name and icon_path.exists():
+                try:
+                    icon = Image.open(icon_path).convert("RGBA")
+                    icon = icon.resize((60, 60), Image.Resampling.LANCZOS)
+                    overlay.paste(icon, (x, y + 10), icon)
+                except:
+                    pass
 
-            # 文字
             text_x = x + 75
-            draw.text((text_x, y + 15), item.get("name", ""), font=font_item, fill="#fff")
-            draw.text((text_x, y + 55), item.get("desc", ""), font=font_desc, fill="#aaa")
+            draw_ov.text((text_x, y + 15), item.get("name", ""), font=font_item, fill=text_color)
+            draw_ov.text((text_x, y + 55), item.get("desc", ""), font=font_desc, fill="#AAAAAA")
 
         cursor_y += box_height + GROUP_GAP
 
-    canvas.save(save_path)
+    result = Image.alpha_composite(base, overlay)
+    result.save(save_path)

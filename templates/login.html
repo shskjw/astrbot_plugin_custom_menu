@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>登录 - 菜单编辑器</title>
+    <title>菜单编辑登录</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { background: #1a1a1a; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
@@ -15,9 +15,9 @@
 </head>
 <body>
     <div class="box">
-        <h2>🔐 身份验证</h2>
+        <h2>🔐 验证</h2>
         <form method="POST">
-            <input type="password" name="token" placeholder="请输入 Web Token" required>
+            <input type="password" name="token" placeholder="请输入密钥" required>
             <button type="submit">登 录</button>
         </form>
         {% if error %}

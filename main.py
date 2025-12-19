@@ -31,7 +31,7 @@ def get_local_ip():
 @register(
     "astrbot_plugin_custom_menu",
     author="shskjw",
-    desc="可视化菜单编辑器",
+    desc="web可视化菜单编辑器",
     version="1.0.0"
 )
 class CustomMenuPlugin(Star):

@@ -1,0 +1,20 @@
+{
+  "web_host": {
+    "type": "string",
+    "title": "监听地址 (内网/外网)",
+    "description": "选 0.0.0.0 允许局域网/公网访问；选 127.0.0.1 仅限本机访问(更安全)",
+    "default": "0.0.0.0",
+    "enum": ["0.0.0.0", "127.0.0.1"]
+  },
+  "web_port": {
+    "type": "int",
+    "title": "Web 面板端口",
+    "default": 9876
+  },
+  "web_token": {
+    "type": "string",
+    "title": "Web 登录密钥",
+    "default": "astrbot123",
+    "description": "登录 Web 后台的密码"
+  }
+}

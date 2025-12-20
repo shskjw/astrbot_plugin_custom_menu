@@ -9,7 +9,8 @@ from astrbot.api import event
 
 try:
     from .web_server import run_server
-    from .renderer.menu import render_menu
+    from .storage import load_config
+    from .renderer.menu import render_one_menu
 
     HAS_DEPS = True
 except ImportError as e:
@@ -31,8 +32,8 @@ def get_local_ip():
 @register(
     "astrbot_plugin_custom_menu",
     author="shskjw",
-    desc="web可视化菜单编辑器",
-    version="1.0.0"
+    desc="web可视化菜单编辑器(多菜单版)",
+    version="2.0.0"
 )
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
@@ -44,7 +45,7 @@ class CustomMenuPlugin(Star):
 
     async def on_load(self):
         if not HAS_DEPS:
-            self.logger.error("❌ 缺少 quart 或 hypercorn")
+            self.logger.error("❌ 缺少依赖")
         else:
             self.logger.info("✅ 菜单插件加载完毕")
 
@@ -59,21 +60,37 @@ class CustomMenuPlugin(Star):
 
     @event.filter.command("菜单")
     async def menu(self, event: event.AstrMessageEvent):
-        base = Path(__file__).parent
-        img_path = base / "data" / "preview.png"
-
-        if img_path.exists():
-            yield event.image_result(str(img_path))
+        if not HAS_DEPS:
+            yield event.plain_result("❌ 插件依赖缺失")
             return
 
-        if HAS_DEPS:
+        # 加载最新配置
+        root_config = load_config()
+        menus = root_config.get("menus", [])
+
+        # 筛选启用的菜单
+        active_menus = [m for m in menus if m.get("enabled", True)]
+
+        if not active_menus:
+            yield event.plain_result("⚠️ 当前没有启用的菜单")
+            return
+
+        chain = []
+        for menu_data in active_menus:
             try:
-                await asyncio.to_thread(render_menu, img_path)
-                yield event.image_result(str(img_path))
+                # 渲染图片
+                img = await asyncio.to_thread(render_one_menu, menu_data)
+
+                # 保存临时文件发送 (或者直接转 base64，这里用临时文件稳妥)
+                temp_path = Path(__file__).parent / "data" / f"temp_{menu_data.get('id')}.png"
+                img.save(temp_path)
+                chain.append(event.image_result(str(temp_path)))
             except Exception as e:
-                yield event.plain_result(f"❌ 渲染失败: {e}")
-        else:
-            yield event.plain_result("❌ 缺少依赖且无缓存图片")
+                self.logger.error(f"渲染菜单 {menu_data.get('name')} 失败: {e}")
+                chain.append(event.plain_result(f"❌ 渲染错误: {e}"))
+
+        # 一次性发送所有图片
+        yield chain
 
     @event.filter.command("开启后台")
     async def start_web_cmd(self, event: event.AstrMessageEvent):
@@ -133,15 +150,3 @@ class CustomMenuPlugin(Star):
         self.web_process.join()
         self.web_process = None
         yield event.plain_result("✅ 后台已关闭")
-
-    @event.filter.command("菜单登录")
-    async def login_info(self, event: event.AstrMessageEvent):
-        if not self.is_admin(event): return
-        if not self.web_process or not self.web_process.is_alive():
-            yield event.plain_result("⚠️ 后台未启动")
-            return
-        host_conf = self.cfg.get("web_host", "0.0.0.0")
-        port = self.cfg.get("web_port", 9876)
-        token = self.cfg.get("web_token", "astrbot123")
-        show_ip = "127.0.0.1" if host_conf == "127.0.0.1" else get_local_ip()
-        yield event.plain_result(f"地址: http://{show_ip}:{port}/\n密钥: {token}")

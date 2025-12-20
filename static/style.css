@@ -1,4 +1,5 @@
 /* ================= 字体定义 ================= */
+/* 这里的 src 仅作兜底，实际会在 editor.js 中动态注入 */
 @font-face { font-family: 'MiaoTitle'; src: url('/fonts/title.ttf'); font-display: swap; }
 @font-face { font-family: 'MiaoText'; src: url('/fonts/text.ttf'); font-display: swap; }
 
@@ -12,6 +13,7 @@
     --text-sub: #aaa;
     --accent: #0e639c;
     --danger: #c53030;
+    --success: #388e3c;
 }
 
 /* ================= 全局重置 ================= */
@@ -27,13 +29,27 @@ body {
 ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ================= 侧边栏布局 (修复滚动) ================= */
+/* ================= 侧边栏布局 ================= */
 .sidebar {
     width: 400px; background-color: var(--bg-sidebar); border-right: 1px solid #000;
     display: flex; flex-direction: column; z-index: 1000;
     box-shadow: 4px 0 15px rgba(0,0,0,0.3);
 }
 
+/* 新增：顶部多菜单管理区域 */
+.sidebar-header-top {
+    flex: 0 0 auto;
+    padding: 12px 20px;
+    background-color: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+    z-index: 1002;
+}
+.sidebar-header-top label {
+    display: block; font-size: 11px; color: #666;
+    margin-bottom: 6px; font-weight: 600; text-transform: uppercase;
+}
+
+/* 通用头部 */
 .sidebar-header {
     flex: 0 0 auto; padding: 15px 20px;
     background-color: #252526; border-bottom: 1px solid var(--border-color);
@@ -74,6 +90,18 @@ input[type="text"], input[type="number"], select {
 }
 input:focus, select:focus { border-color: var(--accent) !important; background-color: #333 !important; }
 
+/* Range Slider */
+input[type="range"] {
+    -webkit-appearance: none; width: 100%; background: transparent; height: 20px; padding: 0; border: none !important;
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; margin-top: -6px;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%; height: 4px; cursor: pointer; background: #444; border-radius: 2px;
+}
+
 /* 颜色选择器 */
 .color-picker-row {
     display: flex; align-items: center; gap: 8px;
@@ -103,13 +131,13 @@ input[type="color"] {
 .btn-block { width: 100%; display: block; margin-top: 5px; }
 
 .icon-btn {
-    padding: 2px 8px; font-size: 12px; background-color: #383838;
+    padding: 4px 8px; font-size: 12px; background-color: #383838;
     border-radius: 3px; color: #ccc; cursor: pointer; border: 1px solid #555;
-    transition: all 0.2s;
+    transition: all 0.2s; min-width: 24px; text-align: center;
 }
 .icon-btn:hover { color: #fff; background-color: #555; border-color: #777; }
 
-/* ================= 画布区域 (修复图片显示) ================= */
+/* ================= 画布区域 ================= */
 .workspace {
     flex: 1; background-color: #000; overflow: auto;
     display: flex; justify-content: center; padding: 60px;
@@ -121,7 +149,7 @@ input[type="color"] {
     width: 1000px;
     min-height: 1200px;
     background-color: #222;
-    /* 🚀 关键修复：让长图完整显示，不被截断 */
+    /* 关键：让长图完整显示，不被截断 */
     background-size: 100% auto;
     background-repeat: no-repeat;
     background-position: top center;
@@ -139,7 +167,7 @@ input[type="color"] {
     position: absolute; cursor: grab; user-select: none;
     border: 1px dashed transparent; padding: 4px 8px; z-index: 500;
     white-space: nowrap; line-height: 1.2;
-    transition: border 0.1s, background 0.1s;
+    transition: border 0.1s;
 }
 .draggable-widget:hover { border: 1px dashed rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
 .draggable-widget.selected { border: 1px solid var(--accent); background: rgba(14, 99, 156, 0.2); cursor: grabbing; }
@@ -154,7 +182,7 @@ input[type="color"] {
 
 /* ================= 预览元素 (Miao UI) ================= */
 .header-area { margin-bottom: 50px; margin-top: 20px; width: 100%; position: relative; pointer-events: none; }
-.header-area * { pointer-events: auto; } /* 允许文字点击 */
+.header-area * { pointer-events: auto; }
 
 .main-title {
     font-family: 'MiaoTitle'; font-weight: bold; margin: 0 0 10px 0;
@@ -172,7 +200,15 @@ input[type="color"] {
 }
 .group-header:hover { padding-left: 15px; border-left-color: var(--accent); }
 
-.grid-container { display: grid; gap: 15px; background: rgba(0,0,0,0.4); padding: 20px; border-radius: 16px; backdrop-filter: blur(8px); }
+/* 修改：移除了固定的背景色，改为由 JS 控制 inline-style */
+.grid-container {
+    display: grid;
+    gap: 15px;
+    padding: 20px;
+    border-radius: 16px;
+    /* 背景色和模糊效果现在通过 style 属性动态设置 */
+}
+
 .grid-item {
     display: flex; align-items: center; padding: 15px;
     background: rgba(255,255,255,0.08); border-radius: 10px;

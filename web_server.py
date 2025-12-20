@@ -4,6 +4,7 @@ import asyncio
 import traceback
 from pathlib import Path
 from multiprocessing import Queue
+import uuid
 
 PLUGIN_DIR = Path(__file__).parent
 if str(PLUGIN_DIR) not in sys.path:
@@ -11,26 +12,22 @@ if str(PLUGIN_DIR) not in sys.path:
 
 
 def run_server(config_dict, status_queue):
-    """
-    Web 服务子进程入口。
-    使用 Quart + Hypercorn 运行。
-    """
     try:
-        # 强制刷新输出流，确保日志可见
         sys.stdout.reconfigure(line_buffering=True)
         sys.stderr.reconfigure(line_buffering=True)
 
-        from quart import Quart, request, render_template, redirect, url_for, session, jsonify, send_from_directory
+        from quart import Quart, request, render_template, redirect, url_for, session, jsonify, send_from_directory, \
+            send_file
         from hypercorn.config import Config
         from hypercorn.asyncio import serve
+        from io import BytesIO
 
-        # 延迟导入业务逻辑
         try:
-            from storage import load_menu, save_menu, get_assets_list, ASSETS_DIR, FONTS_DIR
-            from renderer.menu import render_menu
+            from storage import load_config, save_config, get_assets_list, ASSETS_DIR, FONTS_DIR
+            from renderer.menu import render_one_menu
         except ImportError:
-            from .storage import load_menu, save_menu, get_assets_list, ASSETS_DIR, FONTS_DIR
-            from .renderer.menu import render_menu
+            from .storage import load_config, save_config, get_assets_list, ASSETS_DIR, FONTS_DIR
+            from .renderer.menu import render_one_menu
 
         app = Quart(__name__,
                     template_folder=str(PLUGIN_DIR / "templates"),
@@ -42,10 +39,6 @@ def run_server(config_dict, status_queue):
         async def check_auth():
             if request.endpoint in ["login", "static", "serve_raw_assets", "serve_fonts", "health", "ping"]: return
             if not session.get("is_admin"): return redirect(url_for("login"))
-
-        @app.route("/ping")
-        async def ping():
-            return "pong"
 
         @app.route("/login", methods=["GET", "POST"])
         async def login():
@@ -62,19 +55,14 @@ def run_server(config_dict, status_queue):
         async def index():
             return await render_template("index.html")
 
-        @app.route("/api/menu", methods=["GET"])
-        async def get_menu():
-            return jsonify(load_menu())
+        @app.route("/api/config", methods=["GET"])
+        async def get_all_config():
+            return jsonify(load_config())
 
-        @app.route("/api/menu", methods=["POST"])
-        async def save_menu_api():
+        @app.route("/api/config", methods=["POST"])
+        async def save_all_config():
             data = await request.get_json()
-            save_menu(data)
-            try:
-                preview_path = PLUGIN_DIR / "data" / "preview.png"
-                render_menu(preview_path)
-            except Exception as e:
-                return jsonify({"status": "error", "msg": str(e)}), 500
+            save_config(data)
             return jsonify({"status": "ok"})
 
         @app.route("/api/assets", methods=["GET"])
@@ -95,11 +83,13 @@ def run_server(config_dict, status_queue):
 
             if not u_file: return jsonify({"error": "No file"}), 400
 
-            filename = u_file.filename
+            filename = f"{uuid.uuid4().hex[:8]}_{u_file.filename}"  # 防止重名
             if u_type == "background":
                 target = ASSETS_DIR / "backgrounds" / filename
             elif u_type == "icon":
                 target = ASSETS_DIR / "icons" / filename
+            elif u_type == "widget_img":
+                target = ASSETS_DIR / "widgets" / filename
             elif u_type == "font":
                 target = FONTS_DIR / filename
             else:
@@ -108,14 +98,20 @@ def run_server(config_dict, status_queue):
             await u_file.save(target)
             return jsonify({"status": "ok", "filename": filename})
 
-        @app.route("/api/preview")
-        async def preview():
-            p_file = PLUGIN_DIR / "data" / "preview.png"
-            if p_file.exists():
-                r = await send_from_directory(p_file.parent, p_file.name)
-                r.headers["Cache-Control"] = "no-store"
-                return r
-            return "No preview", 404
+        @app.route("/api/export_image", methods=["POST"])
+        async def export_image():
+            # 接收单个菜单的JSON配置，直接渲染并返回图片流
+            menu_data = await request.get_json()
+            try:
+                # 在线程池中渲染
+                img = await asyncio.to_thread(render_one_menu, menu_data)
+                byte_io = BytesIO()
+                img.save(byte_io, 'PNG')
+                byte_io.seek(0)
+                return await send_file(byte_io, mimetype='image/png', as_attachment=True,
+                                       attachment_filename=f"{menu_data.get('name', 'menu')}.png")
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
 
         @app.route("/raw_assets/<path:path>")
         async def serve_raw_assets(path):
@@ -135,8 +131,6 @@ def run_server(config_dict, status_queue):
             cfg = Config()
             cfg.bind = [f"{host}:{port}"]
             cfg.graceful_timeout = 2
-            cfg.accesslog = None
-            cfg.errorlog = None
 
             print(f"✅ [Web进程] 启动监听: {host}:{port}")
             status_queue.put("SUCCESS")

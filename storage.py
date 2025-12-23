@@ -58,7 +58,9 @@ class PluginStorage:
         self.icon_dir = self.assets_dir / "icons"
         self.img_dir = self.assets_dir / "widgets"
         self.menu_file = self.data_dir / "menu.json"
-        self.fonts_dir = self.base_dir / "fonts"
+
+        # --- 修改：字体路径迁移到 assets/fonts ---
+        self.fonts_dir = self.assets_dir / "fonts"
 
         self._init_directories()
 
@@ -69,6 +71,19 @@ class PluginStorage:
             self.icon_dir.mkdir(parents=True, exist_ok=True)
             self.img_dir.mkdir(parents=True, exist_ok=True)
             self.fonts_dir.mkdir(parents=True, exist_ok=True)
+
+            # --- 新增：复制默认字体到数据目录 ---
+            # 这样用户既可以上传新字体，也能使用插件自带的默认字体
+            source_fonts = self.base_dir / "fonts"
+            if source_fonts.exists():
+                for font_file in source_fonts.glob("*.*"):  # copy all files
+                    target = self.fonts_dir / font_file.name
+                    if not target.exists():
+                        try:
+                            shutil.copy(font_file, target)
+                            logger.info(f"已初始化默认字体: {font_file.name}")
+                        except Exception as e:
+                            logger.warning(f"无法复制默认字体 {font_file.name}: {e}")
 
     def migrate_data(self):
         """

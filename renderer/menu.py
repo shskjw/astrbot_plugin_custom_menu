@@ -22,7 +22,7 @@ BASE_ITEM_GAP_Y = 15
 
 
 def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
-    # Fix: Access fonts_dir via singleton
+    # 字体路径现在从 plugin_storage.fonts_dir 获取 (指向 data/assets/fonts)
     if not font_name or not plugin_storage.fonts_dir:
         return ImageFont.load_default()
 
@@ -42,7 +42,7 @@ def hex_to_rgb(hex_color):
         if len(hex_color) == 6:
             return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
     except (ValueError, TypeError):
-        return 30, 30, 30  # Fallback
+        return 30, 30, 30
     except Exception:
         return 30, 30, 30
 
@@ -59,15 +59,14 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
 
         if radius > 0:
             try:
+                # 标准 Pillow 写法
                 bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing, anchor=anchor)
-                # Ensure w/h are positive
                 w = max(1, bbox[2] - bbox[0] + radius * 4)
                 h = max(1, bbox[3] - bbox[1] + radius * 4)
 
                 shadow_img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
                 s_draw = ImageDraw.Draw(shadow_img)
 
-                # Center text in shadow canvas
                 txt_x = radius * 2 - bbox[0]
                 txt_y = radius * 2 - bbox[1]
                 s_draw.multiline_text((txt_x, txt_y), text, font=font, fill=s_color + (160,), spacing=spacing)
@@ -79,7 +78,7 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
 
                 draw._image.paste(shadow_img, (int(paste_x), int(paste_y)), shadow_img)
             except Exception:
-                # Fallback to hard shadow on error
+                # 异常降级
                 draw.multiline_text((x + off_x, y + off_y), text, font=font, fill=s_color, anchor=anchor,
                                     spacing=spacing)
         else:
@@ -112,7 +111,6 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, sca
     icon_name = item.get("icon", "")
     text_start_x = x + int(15 * scale)
 
-    # Fix: Access icon_dir via singleton
     if icon_name and plugin_storage.icon_dir:
         icon_path = plugin_storage.icon_dir / icon_name
         if icon_path.exists():
@@ -234,7 +232,6 @@ def render_one_menu(menu_data: dict) -> Image.Image:
         current_y = box_start_y + content_h + GROUP_GAP
 
     final_h = current_y + s(50)
-    # Fix: Access bg_dir via singleton
     if not use_canvas_size:
         if (bg_name := menu_data.get("background")) and plugin_storage.bg_dir:
             bg_path = plugin_storage.bg_dir / bg_name
@@ -358,7 +355,6 @@ def render_one_menu(menu_data: dict) -> Image.Image:
             wx, wy = s(int(w.get("x", 0))), s(int(w.get("y", 0)))
             if w_type == 'image':
                 content = w.get("content")
-                # Fix: Access img_dir via singleton
                 if content and plugin_storage.img_dir:
                     img_path = plugin_storage.img_dir / content
                     if img_path.exists():

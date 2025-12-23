@@ -180,7 +180,7 @@ input[type="color"] {
 .draggable-widget.selected .resize-handle { display: block; }
 .free-item.selected .resize-handle { display: block; }
 
-/* ================= Miao UI 预览元素 ================= */
+/* =================  UI 预览元素 ================= */
 
 /* 标题区域 */
 .header-area {

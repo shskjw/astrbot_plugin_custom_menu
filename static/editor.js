@@ -1,8 +1,3 @@
-/**
- * Miao Menu Editor Logic v12.0
- * 修复：画布尺寸不生效、支持分组独立列数设置
- */
-
 const appState = {
     fullConfig: { menus: [] },
     currentMenuId: null,

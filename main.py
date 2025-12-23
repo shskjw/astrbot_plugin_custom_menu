@@ -9,23 +9,14 @@ from pathlib import Path
 from astrbot.api.star import Context, Star, register
 from astrbot.api import event
 from astrbot.api.event import filter
-from astrbot.api import logger  # Fix: Use AstrBot logger
+from astrbot.api import logger
 from astrbot.api.star import StarTools
 
-# 尝试导入依赖
-try:
-    from .web_server import run_server
-    from .storage import load_config, DATA_DIR
-    from .renderer.menu import render_one_menu
-
-    HAS_DEPS = True
-except ImportError as e:
-    logger.error(f"❌ 依赖缺失: {e}")  # Fix: Use AstrBot logger
-    HAS_DEPS = False
+# 尝试导入依赖 (延迟到 on_load 或 try块中处理，这里先声明)
+HAS_DEPS = False
 
 
 def _get_local_ip_sync():
-    """Synchronous implementation of getting local IP"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
@@ -37,7 +28,6 @@ def _get_local_ip_sync():
 
 
 async def get_local_ip():
-    """Asynchronous wrapper to prevent blocking the event loop"""
     return await asyncio.to_thread(_get_local_ip_sync)
 
 
@@ -45,21 +35,28 @@ async def get_local_ip():
     "astrbot_plugin_custom_menu",
     author="shskjw",
     desc="Web可视化菜单编辑器(支持LLM智能回复)",
-    version="1.5.2"
+    version="1.5.3"
 )
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context, config)
         self.cfg = config
         self.web_process = None
-        # logger is imported globally from astrbot.api
         self.admins_id = context.get_config().get("admins_id", [])
 
     async def on_load(self):
-        if not HAS_DEPS:
-            logger.error("❌ 缺少关键依赖，请确保 storage.py 和 renderer/menu.py 存在。")
-        else:
+        # --- FIX: Initialize storage paths explicitly ---
+        global HAS_DEPS
+        try:
+            from . import storage
+            storage.setup_paths()  # Must call this before accessing DATA_DIR
+
+            from .renderer.menu import render_one_menu
+            HAS_DEPS = True
             logger.info("✅ 菜单插件加载完毕 (LLM Tool: show_graphical_menu 已注册)")
+        except ImportError as e:
+            logger.error(f"❌ 依赖缺失: {e}")
+            HAS_DEPS = False
 
     async def on_unload(self):
         if self.web_process and self.web_process.is_alive():
@@ -71,16 +68,15 @@ class CustomMenuPlugin(Star):
         sender_id = str(event.get_sender_id())
         return sender_id in [str(uid) for uid in self.admins_id]
 
-    # --- 核心方法：生成图片 ---
     async def _generate_menu_chain(self, event_obj):
-        """
-        修改为异步生成器：逐个 yield 结果，提高发送成功率
-        """
         if not HAS_DEPS:
             yield event_obj.plain_result("❌ 插件文件不完整，无法渲染。")
             return
 
         try:
+            from .storage import load_config, DATA_DIR
+            from .renderer.menu import render_one_menu
+
             logger.info("正在渲染菜单...")
             root_config = load_config()
             menus = root_config.get("menus", [])
@@ -100,7 +96,6 @@ class CustomMenuPlugin(Star):
                     yield event_obj.plain_result(f"❌ 渲染错误 [{menu_data.get('name')}]: {e}")
                     continue
 
-                # 使用绝对路径，确保不同平台适配器能读取
                 temp_filename = f"temp_render_{menu_data.get('id')}.png"
                 temp_path = (DATA_DIR / temp_filename).absolute()
                 img.save(temp_path)
@@ -112,29 +107,22 @@ class CustomMenuPlugin(Star):
             logger.error(f"生成菜单流程异常: {e}")
             yield event_obj.plain_result(f"❌ 系统内部错误: {e}")
 
-    # --- 触发方式 1: 传统指令 "菜单" ---
     @filter.command("菜单")
     async def menu_cmd(self, event: event.AstrMessageEvent):
         """发送功能菜单图片"""
         async for result in self._generate_menu_chain(event):
             yield result
 
-    # --- 触发方式 2: LLM 智能调用 ---
     @filter.llm_tool(name="show_graphical_menu")
     async def show_menu_tool(self, event: event.AstrMessageEvent):
         """
         当用户询问你是谁、有什么功能、查看菜单、查看帮助、指令列表时，调用此工具。
-        此工具会直接发送一张包含所有功能的图形化菜单图片给用户。
         """
         logger.info(f"🧠 LLM 触发了菜单工具 (User: {event.get_sender_name()})")
-
         async for result in self._generate_menu_chain(event):
             yield result
-
-        # Fix: event_obj -> event
         yield event.plain_result("已发送功能菜单图片。")
 
-    # --- 后台管理指令 ---
     @filter.command("开启后台")
     async def start_web_cmd(self, event: event.AstrMessageEvent):
         if not self.is_admin(event):
@@ -158,8 +146,12 @@ class CustomMenuPlugin(Star):
             except:
                 clean_config = dict(self.cfg)
 
-            # Fix: Pass correct data_dir to subprocess to avoid StarTools dependency issues
+            # Pass absolute path string to subprocess
+            from .storage import DATA_DIR
             data_dir_str = str(DATA_DIR.absolute())
+
+            # Import run_server here to avoid circular imports if any
+            from .web_server import run_server
 
             self.web_process = ctx.Process(
                 target=run_server,

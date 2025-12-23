@@ -1,19 +1,12 @@
 import json
 import uuid
 import shutil
-import logging
 from pathlib import Path
 from typing import Dict, Any
 
-# Try importing AstrBot components
-try:
-    from astrbot.api.star import StarTools
-    from astrbot.api import logger
-
-    _HAS_ASTRBOT = True
-except ImportError:
-    _HAS_ASTRBOT = False
-    logger = logging.getLogger(__name__)
+# AstrBot API
+from astrbot.api.star import StarTools
+from astrbot.api import logger
 
 # --- Path Initialization ---
 DATA_DIR = None
@@ -28,20 +21,16 @@ BASE_DIR = Path(__file__).parent
 
 def setup_paths(custom_data_dir: str = None):
     """
-    Initialize paths.
-    If custom_data_dir is provided (e.g. from web_server), use it.
-    Otherwise, try to use StarTools (framework standard).
+    Explicitly initialize paths.
+    Must be called by main.py (on_load) or web_server.py (process start).
     """
     global DATA_DIR, ASSETS_DIR, BG_DIR, ICON_DIR, IMG_DIR, MENU_FILE, FONTS_DIR
 
     if custom_data_dir:
         DATA_DIR = Path(custom_data_dir)
-    elif _HAS_ASTRBOT:
+    else:
         # Use framework standard path
         DATA_DIR = StarTools.get_data_dir("astrbot_plugin_custom_menu")
-    else:
-        # Fallback for standalone scripts (unlikely in prod but good for safety)
-        DATA_DIR = BASE_DIR / "data"
 
     # Define sub-paths
     ASSETS_DIR = DATA_DIR / "assets"
@@ -51,7 +40,7 @@ def setup_paths(custom_data_dir: str = None):
     MENU_FILE = DATA_DIR / "menu.json"
     FONTS_DIR = BASE_DIR / "fonts"
 
-    # Migrate old data if exists and we are using the new standard path
+    # Migrate old data if exists
     OLD_DATA_DIR = BASE_DIR / "data"
     if OLD_DATA_DIR.exists() and not DATA_DIR.exists() and OLD_DATA_DIR != DATA_DIR:
         try:
@@ -69,10 +58,6 @@ def init_directories():
         ICON_DIR.mkdir(parents=True, exist_ok=True)
         IMG_DIR.mkdir(parents=True, exist_ok=True)
         FONTS_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# Initialize with default strategy on module import
-setup_paths()
 
 
 def create_default_menu(name="默认菜单"):
@@ -146,13 +131,15 @@ DEFAULT_ROOT = {
 
 
 def load_config() -> Dict[str, Any]:
+    # Ensure setup_paths has been called or handle None
     if not MENU_FILE or not MENU_FILE.exists():
-        save_config(DEFAULT_ROOT)
+        if MENU_FILE:  # If path set but file missing
+            save_config(DEFAULT_ROOT)
         return DEFAULT_ROOT
 
     try:
         data = json.loads(MENU_FILE.read_text(encoding="utf-8"))
-        # Migration logic (omitted for brevity, assume valid structure or copied from prev)
+        # Simple structure check/migration could go here
         return data
     except Exception as e:
         logger.error(f"加载配置失败: {e}")

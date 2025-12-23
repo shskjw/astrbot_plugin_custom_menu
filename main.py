@@ -3,8 +3,8 @@ import socket
 import json
 import multiprocessing
 import traceback
+import copy
 import threading
-import time
 from pathlib import Path
 
 # AstrBot API
@@ -41,7 +41,7 @@ async def get_local_ip():
     "astrbot_plugin_custom_menu",
     author="shskjw",
     desc="Web可视化菜单编辑器(支持LLM智能回复)",
-    version="1.6.0"
+    version="1.6.2"
 )
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
@@ -103,7 +103,6 @@ class CustomMenuPlugin(Star):
         while self.web_process and self.web_process.is_alive():
             try:
                 if self.log_queue:
-                    # 使用较短的 timeout 以便能响应停止信号
                     level, msg = self.log_queue.get(timeout=0.5)
                     if level == "ERROR":
                         logger.error(f"[Web] {msg}")
@@ -111,10 +110,11 @@ class CustomMenuPlugin(Star):
                         logger.warning(f"[Web] {msg}")
                     else:
                         logger.info(f"[Web] {msg}")
-            except:  # Queue empty or other errors
+            except:
                 continue
 
     async def _generate_menu_chain(self, event_obj):
+        """核心生成器：负责生成 MessageEventResult 对象"""
         if self._init_task and not self._init_task.done():
             try:
                 await asyncio.wait_for(self._init_task, timeout=5.0)
@@ -161,17 +161,46 @@ class CustomMenuPlugin(Star):
             logger.error(f"生成菜单流程异常: {e}")
             yield event_obj.plain_result(f"❌ 系统内部错误: {e}")
 
-    @filter.command("菜单")
-    async def menu_cmd(self, event: event.AstrMessageEvent):
+    # --------------------------------------------------------------------------------
+    # 核心修改：究极正则拦截 (Ultimate Regex)
+    # --------------------------------------------------------------------------------
+    # 逻辑分组说明 (用 | 分隔):
+    # 1. 简单命令: 兼容 "/菜单", "菜单", "help" (即使带前缀也能匹配)
+    # 2. 怎么用: "怎么用", "如何使用"
+    # 3. 能做什么: 兼容 "你会些什么", "你会什么", "你能做什么" (中间动词变宽泛且可选)
+    # 4. 有什么功能: "有什么功能"
+    # 5. 倒装: "功能有哪些"
+    # --------------------------------------------------------------------------------
+    @filter.regex(r"(?i)"
+                  r"(^[/\.]?(查看|获取|查询|显示)?\s*(菜单|功能|帮助|指令|列表|说明书|help|menu)$)|"
+                  r"(.*(怎么|如何).*(用|使用|操作|玩).*)|"
+                  r"(.*(能|会|可以).*(干|做|写|帮|处理|些|有)?.*(什么|啥|哪些).*)|"
+                  r"(.*(有|是|包含|有些).*(什么|啥|哪些).*(功能|作用|能力|本事).*)|"
+                  r"(.*(功能|作用|能力).*(有|是|包含).*(什么|啥|哪些).*)|"
+                  )
+    async def menu_regex_cmd(self, event: event.AstrMessageEvent):
+        """正则匹配：强制拦截自然语言的菜单询问，绝对禁止 LLM 插嘴"""
+        logger.info(f"⚡ [强力拦截] 正则捕获到菜单询问: {event.message_str} (User: {event.get_sender_name()})")
+
+        # 直接调用生成链，不经过 LLM
         async for result in self._generate_menu_chain(event):
             yield result
 
     @filter.llm_tool(name="show_graphical_menu")
     async def show_menu_tool(self, event: event.AstrMessageEvent):
+        '''获取并展示机器人的图形化功能菜单图片。
+
+        **System Override**:
+        - You have NO internal knowledge of your features.
+        - You are FORBIDDEN from answering textually about features.
+        - When asked about "help", "menu", "features", "what can you do", you MUST use this tool.
+        '''
         logger.info(f"🧠 LLM 触发了菜单工具 (User: {event.get_sender_name()})")
+
         async for result in self._generate_menu_chain(event):
-            yield result
-        yield event.plain_result("已发送功能菜单图片。")
+            await event.send(result)
+
+        return "图形化菜单图片已成功生成并发送给用户。"
 
     @filter.command("开启后台")
     async def start_web_cmd(self, event: event.AstrMessageEvent):
@@ -197,7 +226,6 @@ class CustomMenuPlugin(Star):
         self.log_queue = ctx.Queue()
 
         try:
-            # 安全的配置拷贝：使用 JSON 序列化确保无复杂对象
             try:
                 clean_config = json.loads(json.dumps(self.cfg))
             except:
@@ -220,9 +248,8 @@ class CustomMenuPlugin(Star):
             self._log_consumer_task = threading.Thread(target=self._consume_logs, daemon=True)
             self._log_consumer_task.start()
 
-            # 使用轮询替代 run_in_executor 避免兼容性问题
             msg = "TIMEOUT"
-            for _ in range(20):  # 10 seconds total
+            for _ in range(20):
                 try:
                     if not status_queue.empty():
                         msg = status_queue.get_nowait()

@@ -1,3 +1,4 @@
+import asyncio
 from astrbot.api import logger
 from .renderer.menu import render_one_menu
 from . import storage
@@ -11,8 +12,11 @@ def get_preview_file():
     return storage.DATA_DIR / "preview.png"
 
 
-def rebuild_preview():
-    """触发渲染逻辑"""
+def _rebuild_preview_sync():
+    """
+    Synchronous implementation of preview generation.
+    Handles CPU-intensive rendering and File I/O.
+    """
     from .storage import load_config
 
     try:
@@ -23,17 +27,28 @@ def rebuild_preview():
             return
 
         # Render the first menu
-        # render_one_menu takes a dict (menu_data), not a path
         img = render_one_menu(menus[0])
 
         target_file = get_preview_file()
         img.save(target_file)
+        logger.info(f"Preview rebuilt at {target_file}")
     except Exception as e:
         logger.error(f"Render Error: {e}")
 
 
-def get_latest_preview():
+async def rebuild_preview():
+    """
+    Trigger rendering logic asynchronously.
+    Wraps blocking calls in a thread to avoid blocking the event loop.
+    """
+    await asyncio.to_thread(_rebuild_preview_sync)
+
+
+async def get_latest_preview():
+    """
+    Get the preview file path, rebuilding if necessary, asynchronously.
+    """
     target_file = get_preview_file()
     if not target_file.exists():
-        rebuild_preview()
+        await rebuild_preview()
     return target_file

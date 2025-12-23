@@ -19,15 +19,21 @@ if OLD_DATA_DIR.exists() and not DATA_DIR.exists():
         pass
 
 ASSETS_DIR = DATA_DIR / "assets"
+# --- FIX START: 定义缺失的路径变量 ---
+BG_DIR = ASSETS_DIR / "backgrounds"
+ICON_DIR = ASSETS_DIR / "icons"
+IMG_DIR = ASSETS_DIR / "widgets"
+# --- FIX END ---
 MENU_FILE = DATA_DIR / "menu.json"
 FONTS_DIR = BASE_DIR / "fonts"
 
 
 def init_directories():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    (ASSETS_DIR / "backgrounds").mkdir(parents=True, exist_ok=True)
-    (ASSETS_DIR / "icons").mkdir(parents=True, exist_ok=True)
-    (ASSETS_DIR / "widgets").mkdir(parents=True, exist_ok=True)
+    # 使用已定义的变量创建目录，保证一致性
+    BG_DIR.mkdir(parents=True, exist_ok=True)
+    ICON_DIR.mkdir(parents=True, exist_ok=True)
+    IMG_DIR.mkdir(parents=True, exist_ok=True)
     FONTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -172,8 +178,8 @@ def get_assets_list() -> Dict[str, list]:
         return [f.name for f in path.glob("*") if f.suffix.lower() in exts]
 
     return {
-        "backgrounds": scan(ASSETS_DIR / "backgrounds", ['.png', '.jpg', '.jpeg']),
-        "icons": scan(ASSETS_DIR / "icons", ['.png', '.jpg', '.jpeg']),
-        "widget_imgs": scan(ASSETS_DIR / "widgets", ['.png', '.jpg', '.jpeg', '.gif']),
+        "backgrounds": scan(BG_DIR, ['.png', '.jpg', '.jpeg']),
+        "icons": scan(ICON_DIR, ['.png', '.jpg', '.jpeg']),
+        "widget_imgs": scan(IMG_DIR, ['.png', '.jpg', '.jpeg', '.gif']),
         "fonts": scan(FONTS_DIR, ['.ttf', '.otf', '.ttc'])
     }

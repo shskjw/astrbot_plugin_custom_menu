@@ -1,5 +1,5 @@
 name: astrbot_plugin_custom_menu
-desc: 一个菜单功能
+desc: 一个web菜单在线diy插件
 help:  # 插件的帮助信息
 version: 1.5.5 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: shskjw

@@ -5,6 +5,7 @@ import multiprocessing
 import traceback
 import copy
 import threading
+import re  # 引入 re 模块
 from pathlib import Path
 
 # AstrBot API
@@ -54,6 +55,21 @@ class CustomMenuPlugin(Star):
 
         self.has_deps = False
         self.dep_error = "插件正在初始化..."
+
+        # 1. 触发关键词（粗筛）：如果消息里不包含这些词中的任意一个，直接跳过正则，节省 CPU
+        self.trigger_keywords = [
+            "菜单", "功能", "帮助", "指令", "列表", "说明书", "help", "menu"
+        ]
+
+        # 2. 预编译正则（精筛）：只编译一次，避免重复编译开销
+        self.regex_pattern = re.compile(
+            r"(?i)"
+            r"(^\s*[/\.]?(菜单|功能|帮助|指令|列表|说明书|help|menu)\s*$)|"
+            r"(^\s*(这个|你|bot)?\s*(怎么|如何|咋)\s*(用|使用|操作)\s*[?？]*$)|"
+            r"(^\s*(你|bot)?\s*(能|会|可以|都?会)\s*(干|做|写|帮|处理|些|有)\s*(什么|啥|哪些)\s*(呢|呀|功能|作用)?\s*[?？]*$)|"
+            r"(^\s*(你|bot)?\s*(有|包含|是)\s*(什么|啥|哪些)\s*(功能|作用|能力|本事)\s*[?？]*$)|"
+            r"(^\s*(你|bot)?\s*(的)?\s*(功能|作用|能力)\s*(都?有|是|包含)\s*(什么|啥|哪些)\s*[?？]*$)"
+        )
 
         # 启动初始化
         self._init_task = asyncio.create_task(self._async_init())
@@ -162,29 +178,36 @@ class CustomMenuPlugin(Star):
             yield event_obj.plain_result(f"❌ 系统内部错误: {e}")
 
     # --------------------------------------------------------------------------------
-    # 核心修改：精准正则拦截 (已删除“介绍”相关匹配)
+    # 核心修改：高性能过滤 (High Performance Filter)
     # --------------------------------------------------------------------------------
-    @filter.regex(r"(?i)"
-                  # 1. 纯指令 (Strict Commands)
-                  r"(^\s*[/\.]?(菜单|功能|帮助|指令|列表|说明书|help|menu)\s*$)|"
-                  # 2. 怎么用 (How to use - Strict)
-                  r"(^\s*(这个|你|bot)?\s*(怎么|如何|咋)\s*(用|使用|操作)\s*[?？]*$)|"
-                  # 3. 能做什么/会些什么 (Strict Capability)
-                  #    匹配: [你/bot] [能/会/可以] [干/做/写/帮/些/有] [什么/啥/哪些]
-                  r"(^\s*(你|bot)?\s*(能|会|可以|都?会)\s*(干|做|写|帮|处理|些|有)\s*(什么|啥|哪些)\s*(呢|呀|功能|作用)?\s*[?？]*$)|"
-                  # 4. 有什么功能 (Strict Features)
-                  #    匹配: [你/bot] [有/包含/是] [什么/啥/哪些] [功能]
-                  r"(^\s*(你|bot)?\s*(有|包含|是)\s*(什么|啥|哪些)\s*(功能|作用|能力|本事)\s*[?？]*$)|"
-                  # 5. 倒装询问
-                  #    匹配: [你] [功能] [有] [哪些]
-                  r"(^\s*(你|bot)?\s*(的)?\s*(功能|作用|能力)\s*(都?有|是|包含)\s*(什么|啥|哪些)\s*[?？]*$)"
-                  )
-    async def menu_regex_cmd(self, event: event.AstrMessageEvent):
-        """正则匹配：精准拦截菜单询问，防止长对话误触"""
-        logger.info(f"⚡ [精准拦截] 识别到菜单意图: {event.message_str} (User: {event.get_sender_name()})")
+    # 策略：
+    # 1. 监听所有消息 (@filter.event_message_type)。
+    # 2. 粗筛 (Level 1): 检查消息是否包含任何一个关键词。如果不包含，直接 return。这步极快。
+    # 3. 精筛 (Level 2): 如果包含关键词，再运行正则进行精确句式匹配。
+    # --------------------------------------------------------------------------------
+    @filter.event_message_type(event.AstrMessageEvent)
+    async def menu_smart_check(self, event: event.AstrMessageEvent):
+        """智能检测菜单意图（高性能版）"""
+        msg = event.message_str
+        if not msg:
+            return
 
-        async for result in self._generate_menu_chain(event):
-            yield result
+        # --- Level 1: 关键词粗筛 (极速) ---
+        # 如果消息里连 "菜单"、"什么"、"怎么" 这些词都没有，肯定不是问菜单的
+        # any() + generator 在 Python 中效率很高，一旦发现一个匹配就停止
+        if not any(keyword in msg for keyword in self.trigger_keywords):
+            return
+
+            # --- Level 2: 正则精筛 ---
+        # 只有通过了粗筛，才跑正则。避免对 "今天天气真好" 这种无关消息跑正则。
+        if self.regex_pattern.search(msg):
+            logger.info(f"⚡ [高性能拦截] 命中菜单规则: {msg} (User: {event.get_sender_name()})")
+
+            # 停止事件传播，直接处理
+            event.stop_event_propagation()
+
+            async for result in self._generate_menu_chain(event):
+                yield result
 
     @filter.llm_tool(name="show_graphical_menu")
     async def show_menu_tool(self, event: event.AstrMessageEvent):

@@ -5,7 +5,7 @@ import multiprocessing
 import traceback
 import copy
 import threading
-import re  # 引入 re 模块
+import re
 from pathlib import Path
 
 # AstrBot API
@@ -56,9 +56,13 @@ class CustomMenuPlugin(Star):
         self.has_deps = False
         self.dep_error = "插件正在初始化..."
 
+        # --- 性能优化：预编译正则与关键词 ---
         # 1. 触发关键词（粗筛）：如果消息里不包含这些词中的任意一个，直接跳过正则，节省 CPU
         self.trigger_keywords = [
-            "菜单", "功能", "帮助", "指令", "列表", "说明书", "help", "menu"
+            "菜单", "功能", "帮助", "指令", "列表", "说明书", "help", "menu",
+            "怎么", "如何", "咋",
+            "什么", "啥", "哪些",
+            "能", "会", "可以"
         ]
 
         # 2. 预编译正则（精筛）：只编译一次，避免重复编译开销
@@ -177,15 +181,10 @@ class CustomMenuPlugin(Star):
             logger.error(f"生成菜单流程异常: {e}")
             yield event_obj.plain_result(f"❌ 系统内部错误: {e}")
 
-    # --------------------------------------------------------------------------------
-    # 核心修改：高性能过滤 (High Performance Filter)
-    # --------------------------------------------------------------------------------
-    # 策略：
-    # 1. 监听所有消息 (@filter.event_message_type)。
-    # 2. 粗筛 (Level 1): 检查消息是否包含任何一个关键词。如果不包含，直接 return。这步极快。
-    # 3. 精筛 (Level 2): 如果包含关键词，再运行正则进行精确句式匹配。
-    # --------------------------------------------------------------------------------
-    @filter.event_message_type(event.AstrMessageEvent)
+    @filter.event_message_type(
+        getattr(filter.EventMessageType, "ALL",
+                filter.EventMessageType.PRIVATE_MESSAGE | filter.EventMessageType.GROUP_MESSAGE)
+    )
     async def menu_smart_check(self, event: event.AstrMessageEvent):
         """智能检测菜单意图（高性能版）"""
         msg = event.message_str
@@ -193,13 +192,10 @@ class CustomMenuPlugin(Star):
             return
 
         # --- Level 1: 关键词粗筛 (极速) ---
-        # 如果消息里连 "菜单"、"什么"、"怎么" 这些词都没有，肯定不是问菜单的
-        # any() + generator 在 Python 中效率很高，一旦发现一个匹配就停止
         if not any(keyword in msg for keyword in self.trigger_keywords):
             return
 
             # --- Level 2: 正则精筛 ---
-        # 只有通过了粗筛，才跑正则。避免对 "今天天气真好" 这种无关消息跑正则。
         if self.regex_pattern.search(msg):
             logger.info(f"⚡ [高性能拦截] 命中菜单规则: {msg} (User: {event.get_sender_name()})")
 

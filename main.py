@@ -199,8 +199,9 @@ class CustomMenuPlugin(Star):
         if self.regex_pattern.search(msg):
             logger.info(f"⚡ [高性能拦截] 命中菜单规则: {msg} (User: {event.get_sender_name()})")
 
-            # 停止事件传播，直接处理
-            event.stop_event_propagation()
+            # 修复点：安全检查 stop_event_propagation 是否存在
+            if hasattr(event, "stop_event_propagation"):
+                event.stop_event_propagation()
 
             async for result in self._generate_menu_chain(event):
                 yield result

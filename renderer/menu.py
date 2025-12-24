@@ -47,10 +47,66 @@ def hex_to_rgb(hex_color):
         return 30, 30, 30
 
 
+def _safe_multiline_text(draw, xy, text, font, fill, anchor=None, spacing=4):
+    """
+    兼容性封装：如果 Pillow 版本不支持 anchor 参数，则手动计算偏移量。
+    """
+    try:
+        # 优先尝试直接调用（支持 anchor 的新版 Pillow）
+        draw.multiline_text(xy, text, font=font, fill=fill, anchor=anchor, spacing=spacing)
+    except ValueError as e:
+        # 捕捉 "anchor not supported for multiline text"
+        if "anchor" in str(e):
+            x, y = xy
+            w, h = 0, 0
+            # 尝试获取文本尺寸
+            try:
+                if hasattr(draw, "multiline_textbbox"):
+                    # Pillow >= 9.2.0
+                    bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing)
+                    w = bbox[2] - bbox[0]
+                    h = bbox[3] - bbox[1]
+                elif hasattr(draw, "multiline_textsize"):
+                    # 旧版 Pillow
+                    w, h = draw.multiline_textsize(text, font=font, spacing=spacing)
+                else:
+                    # 非常老的版本，尝试单行 size 累加（简单估算）
+                    lines = text.split('\n')
+                    w = max(font.getsize(line)[0] for line in lines) if lines else 0
+                    h = len(lines) * (font.getsize(lines[0])[1] + spacing) - spacing
+            except Exception:
+                pass  # 获取失败则不偏移
+
+            # 手动计算 Anchor 偏移
+            # anchor 格式通常为 "lt", "mm", "rt" 等 (Horiz, Vert)
+            if anchor and len(anchor) >= 2:
+                ax, ay = anchor[0].lower(), anchor[1].lower()
+
+                # 水平调整
+                if ax == 'm':
+                    x -= w / 2
+                elif ax == 'r':
+                    x -= w
+
+                # 垂直调整
+                if ay == 'm':
+                    y -= h / 2
+                elif ay == 'b':
+                    y -= h
+                # ay == 't' 是默认值，无需调整
+
+            # 使用无 anchor 参数调用
+            draw.multiline_text((x, y), text, font=font, fill=fill, spacing=spacing)
+        else:
+            # 其他 ValueError 照常抛出
+            raise e
+
+
 def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, spacing=4, scale=1.0):
     x, y = pos
     if not text: return
 
+    # 绘制阴影
     if shadow_cfg.get('enabled'):
         s_color = hex_to_rgb(shadow_cfg.get('color', '#000000'))
         off_x = int(shadow_cfg.get('offset_x', 2) * scale)
@@ -59,16 +115,24 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
 
         if radius > 0:
             try:
-                # 标准 Pillow 写法
-                bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing, anchor=anchor)
-                w = max(1, bbox[2] - bbox[0] + radius * 4)
-                h = max(1, bbox[3] - bbox[1] + radius * 4)
+                # 尝试使用高斯模糊制作阴影
+                # 注意：multiline_textbbox 也可能因为 anchor 报错，这里放在 try 里安全降级
+                if hasattr(draw, "multiline_textbbox"):
+                    bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing, anchor=anchor)
+                    w = max(1, bbox[2] - bbox[0] + radius * 4)
+                    h = max(1, bbox[3] - bbox[1] + radius * 4)
+                else:
+                    raise AttributeError("No multiline_textbbox")
 
                 shadow_img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
                 s_draw = ImageDraw.Draw(shadow_img)
 
+                # 计算阴影文字在临时画布上的位置
+                # 这里的逻辑比较复杂，如果出错直接降级到简单绘制
                 txt_x = radius * 2 - bbox[0]
                 txt_y = radius * 2 - bbox[1]
+
+                # 在 shadow_img 上绘制也不带 anchor，直接控制位置
                 s_draw.multiline_text((txt_x, txt_y), text, font=font, fill=s_color + (160,), spacing=spacing)
 
                 shadow_img = shadow_img.filter(ImageFilter.GaussianBlur(radius))
@@ -78,13 +142,16 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
 
                 draw._image.paste(shadow_img, (int(paste_x), int(paste_y)), shadow_img)
             except Exception:
-                # 异常降级
-                draw.multiline_text((x + off_x, y + off_y), text, font=font, fill=s_color, anchor=anchor,
-                                    spacing=spacing)
+                # 异常降级：直接画硬阴影
+                _safe_multiline_text(draw, (x + off_x, y + off_y), text, font=font, fill=s_color, anchor=anchor,
+                                     spacing=spacing)
         else:
-            draw.multiline_text((x + off_x, y + off_y), text, font=font, fill=s_color, anchor=anchor, spacing=spacing)
+            # 无模糊阴影
+            _safe_multiline_text(draw, (x + off_x, y + off_y), text, font=font, fill=s_color, anchor=anchor,
+                                 spacing=spacing)
 
-    draw.multiline_text((x, y), text, font=font, fill=fill, anchor=anchor, spacing=spacing)
+    # 绘制正文
+    _safe_multiline_text(draw, (x, y), text, font=font, fill=fill, anchor=anchor, spacing=spacing)
 
 
 def draw_glass_rect(base_img: Image.Image, box: tuple, color_hex: str, alpha: int, radius: int, corner_r=15):
@@ -143,16 +210,28 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, sca
     line_spacing = int(4 * scale)
 
     try:
-        name_h = name_font.getbbox(name)[3] - name_font.getbbox(name)[1] if name else 0
-        desc_bbox = draw.multiline_textbbox((0, 0), desc, font=desc_font, spacing=line_spacing) if desc else (0, 0, 0,
-                                                                                                              0)
-        desc_h = desc_bbox[3] - desc_bbox[1]
-    except Exception:
-        name_h = name_font.getsize(name)[1] if name else 0
-        desc_h = 0
+        # 获取高度用于垂直居中
+        if hasattr(name_font, "getbbox"):
+            name_h = name_font.getbbox(name)[3] - name_font.getbbox(name)[1] if name else 0
+        else:
+            name_h = name_font.getsize(name)[1] if name else 0
+
         if desc:
-            lines = desc.split('\n')
-            desc_h = sum(desc_font.getsize(line)[1] for line in lines) + (len(lines) - 1) * line_spacing
+            if hasattr(draw, "multiline_textbbox"):
+                desc_bbox = draw.multiline_textbbox((0, 0), desc, font=desc_font, spacing=line_spacing)
+                desc_h = desc_bbox[3] - desc_bbox[1]
+            elif hasattr(draw, "multiline_textsize"):
+                desc_h = draw.multiline_textsize(desc, font=desc_font, spacing=line_spacing)[1]
+            else:
+                # 极老版本 fallback
+                lines = desc.split('\n')
+                desc_h = sum(desc_font.getsize(line)[1] for line in lines) + (len(lines) - 1) * line_spacing
+        else:
+            desc_h = 0
+
+    except Exception:
+        name_h = 20
+        desc_h = 0
 
     gap = int(5 * scale)
     total_text_height = name_h + (desc_h + gap if desc else 0)
@@ -300,13 +379,16 @@ def render_one_menu(menu_data: dict) -> Image.Image:
         subtitle_text = group.get("subtitle", "")
 
         try:
-            title_bbox = g_title_font.getbbox(title_text) if title_text else (0, 0, 0, 0)
-            title_h = title_bbox[3] - title_bbox[1]
-            sub_bbox = g_sub_font.getbbox(subtitle_text) if subtitle_text else (0, 0, 0, 0)
-            sub_h = sub_bbox[3] - sub_bbox[1]
+            if hasattr(g_title_font, "getbbox"):
+                title_h = g_title_font.getbbox(title_text)[3] - g_title_font.getbbox(title_text)[1] if title_text else 0
+                sub_h = g_sub_font.getbbox(subtitle_text)[3] - g_sub_font.getbbox(subtitle_text)[
+                    1] if subtitle_text else 0
+            else:
+                title_h = g_title_font.getsize(title_text)[1] if title_text else 0
+                sub_h = g_sub_font.getsize(subtitle_text)[1] if subtitle_text else 0
         except Exception:
-            title_h = g_title_font.getsize(title_text)[1] if title_text else 0
-            sub_h = g_sub_font.getsize(subtitle_text)[1] if subtitle_text else 0
+            title_h = 20
+            sub_h = 10
 
         title_y_pos = g_info["title_y"] + s(10)
         draw_text_with_shadow(draw_ov, (box_x + s(10), title_y_pos), title_text, g_title_font, g_title_color,
@@ -316,7 +398,10 @@ def render_one_menu(menu_data: dict) -> Image.Image:
             try:
                 title_w = draw_ov.textlength(title_text, font=g_title_font)
             except:
-                title_w = g_title_font.getsize(title_text)[0]
+                try:
+                    title_w = g_title_font.getsize(title_text)[0]
+                except:
+                    title_w = 100
 
             y_offset = (title_h - sub_h) / 2
             draw_text_with_shadow(draw_ov, (box_x + s(10) + title_w + s(10), title_y_pos + y_offset),

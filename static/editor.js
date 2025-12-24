@@ -102,7 +102,6 @@ function updateFormInputs(m) {
     const canvasModeSel = document.getElementById("canvasMode");
     if (canvasModeSel) canvasModeSel.value = m.use_canvas_size ? "true" : "false";
 
-    // 修改：绑定自定义倍率输入框
     setValue("expScaleInput", m.export_scale || 1.0);
 
     setValue("cvsColorP", m.canvas_color || "#1e1e1e"); setValue("cvsColorT", m.canvas_color || "#1e1e1e");
@@ -439,8 +438,22 @@ function generatePropForm(type, obj, gIdx, iIdx) {
     } else {
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
+
+        // --- 新增：带有上传按钮的图标选择器 ---
         const icons = (appState.assets.icons || []).map(i => `<option value="${i}" ${i===obj.icon?'selected':''}>${i}</option>`).join('');
-        html += `<div class="form-row"><label>图标</label><select onchange="updateProp('${type}', ${gIdx}, ${iIdx}, 'icon', this.value)"><option value="">无</option>${icons}</select></div>`;
+        html += `
+        <div class="form-row">
+            <label>图标</label>
+            <div style="display:flex; gap:5px;">
+                <select style="flex:1" onchange="updateProp('${type}', ${gIdx}, ${iIdx}, 'icon', this.value)">
+                    <option value="">无</option>
+                    ${icons}
+                </select>
+                <button class="btn btn-secondary" onclick="document.getElementById('itemIconUp').click()" title="上传新图标">⬆</button>
+                <input type="file" id="itemIconUp" hidden accept="image/*" onchange="uploadFile('icon', this)">
+            </div>
+        </div>`;
+        // --- 结束 ---
 
         if (obj.icon) {
             html += input("图标高度 (px)", "icon_size", obj.icon_size, "number", "placeholder='默认自适应'");
@@ -637,7 +650,17 @@ async function uploadFile(type, inp) {
         alert("上传成功");
         await loadAssets();
         if(type==='font') initFonts();
+
         renderAll();
+
+        // [新增逻辑] 上传图标后自动刷新属性面板
+        if (type === 'icon' && selectedItem.gIdx !== -1) {
+            openContextEditor('item', selectedItem.gIdx, selectedItem.iIdx);
+        }
+        if (type === 'widget_img' && selectedWidgetIdx !== -1) {
+            updateWidgetEditor(getCurrentMenu());
+        }
+
     } catch(e) { alert("上传失败!"); } finally { inp.value = ""; }
 }
 

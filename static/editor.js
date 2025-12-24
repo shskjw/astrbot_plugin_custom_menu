@@ -7,13 +7,24 @@ const appState = {
 
 // 拖拽核心状态
 let dragData = {
-    active: false, isDragging: false,
-    mode: 'move', type: null,
+    active: false,
+    isDragging: false,
+    mode: 'move', // 'move' or 'resize'
+    type: null,   // 'item' or 'widget'
+
+    // 数据索引
     gIdx: -1, iIdx: -1, targetIdx: -1,
+
+    // 坐标计算
     startX: 0, startY: 0,
-    initialVals: {},
-    elId: ''
+    initialVals: {}, // {x, y, w, h}
+
+    // 缓存 DOM 元素
+    cachedEl: null
 };
+
+// 渲染锁
+let rafLock = false;
 
 let viewState = { scale: 1 };
 let selectedWidgetIdx = -1;
@@ -296,14 +307,19 @@ function renderCanvas(m) {
 
 function renderWidgets(container, m, shadowCss) {
     (m.custom_widgets || []).forEach((wid, idx) => {
-        const el = document.createElement("div"); el.className = "draggable-widget";
+        const el = document.createElement("div");
+        el.className = "draggable-widget";
+        el.id = `widget-${idx}`;
         if (selectedWidgetIdx === idx) el.classList.add("selected");
+
         el.style.left = (parseInt(wid.x)||0) + "px";
         el.style.top = (parseInt(wid.y)||0) + "px";
+
         if (wid.type === 'image') {
             const imgUrl = wid.content ? `/raw_assets/widgets/${wid.content}` : '';
             el.innerHTML = imgUrl ? `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover;pointer-events:none">` : `无图`;
-            el.style.width = (parseInt(wid.width)||100) + "px"; el.style.height = (parseInt(wid.height)||100) + "px";
+            el.style.width = (parseInt(wid.width)||100) + "px";
+            el.style.height = (parseInt(wid.height)||100) + "px";
         } else {
             el.innerText = wid.text || "Text";
             el.style.fontSize = (parseInt(wid.size)||40) + "px";
@@ -311,23 +327,46 @@ function renderWidgets(container, m, shadowCss) {
             el.style.fontFamily = cssFont(wid.font);
             el.style.textShadow = shadowCss;
         }
+
+        // 绑定移动
         el.onmousedown = (e) => initWidgetDrag(e, idx, 'move');
-        const handle = document.createElement("div"); handle.className = "resize-handle";
+
+        // 绑定缩放手柄
+        const handle = document.createElement("div");
+        handle.className = "resize-handle";
         handle.onmousedown = (e) => initWidgetDrag(e, idx, 'resize');
         el.appendChild(handle);
+
         container.appendChild(el);
     });
 }
 function hexToRgba(hex, alpha) { if(!hex) return `rgba(0,0,0,${alpha})`; const r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16); return `rgba(${r},${g},${b},${alpha})`; }
 
+// --- 统一的选中逻辑 ---
+function selectWidget(idx) {
+    // 只有当真正切换了选中项时才重绘，避免拖拽时闪烁
+    if (selectedWidgetIdx !== idx) {
+        selectedItem = { gIdx: -1, iIdx: -1 };
+        selectedWidgetIdx = idx;
+
+        document.getElementById("propPanel").style.display = "none";
+        document.getElementById("globalPanel").style.display = "block";
+
+        renderCanvas(getCurrentMenu());
+        updateWidgetEditor(getCurrentMenu());
+    }
+}
+
 function openContextEditor(type, gIdx, iIdx) {
-    if (dragData.isDragging) return;
+    if (dragData.active && dragData.isDragging) return;
+
+    selectedWidgetIdx = -1;
     if (type === 'item') {
         selectedItem = { gIdx, iIdx };
     } else {
         selectedItem = { gIdx: -1, iIdx: -1 };
     }
-    selectedWidgetIdx = -1;
+
     document.getElementById("widgetEditor").style.display = "none";
     const m = getCurrentMenu();
     let targetObj, title, desc;
@@ -439,7 +478,6 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
 
-        // --- 新增：带有上传按钮的图标选择器 ---
         const icons = (appState.assets.icons || []).map(i => `<option value="${i}" ${i===obj.icon?'selected':''}>${i}</option>`).join('');
         html += `
         <div class="form-row">
@@ -453,7 +491,6 @@ function generatePropForm(type, obj, gIdx, iIdx) {
                 <input type="file" id="itemIconUp" hidden accept="image/*" onchange="uploadFile('icon', this)">
             </div>
         </div>`;
-        // --- 结束 ---
 
         if (obj.icon) {
             html += input("图标高度 (px)", "icon_size", obj.icon_size, "number", "placeholder='默认自适应'");
@@ -504,83 +541,126 @@ function deleteCurrentItemProp(gIdx, iIdx) {
     }
 }
 
+// -------------------------------------------------------------
+//  核心拖拽逻辑 (点击即拖 + 高性能)
+// -------------------------------------------------------------
+
 function initItemDrag(e, gIdx, iIdx, mode) {
     e.stopPropagation(); e.preventDefault();
     if (selectedItem.gIdx !== gIdx || selectedItem.iIdx !== iIdx) {
         openContextEditor('item', gIdx, iIdx);
     }
     const item = getCurrentMenu().groups[gIdx].items[iIdx];
+    const elId = `item-${gIdx}-${iIdx}`;
+
     dragData = {
-        active: true, isDragging: false, type: 'item', mode: mode,
-        gIdx, iIdx, startX: e.clientX, startY: e.clientY,
+        active: true,
+        isDragging: true,
+        type: 'item',
+        mode: mode,
+        gIdx, iIdx,
+        startX: e.clientX,
+        startY: e.clientY,
         initialVals: { x: parseInt(item.x)||0, y: parseInt(item.y)||0, w: parseInt(item.w)||200, h: parseInt(item.h)||80 },
-        elId: `item-${gIdx}-${iIdx}`
+        cachedEl: document.getElementById(elId)
     };
 }
 
+// 核心修复：完全对齐 Item 的拖拽逻辑
 function initWidgetDrag(e, idx, mode) {
     e.stopPropagation(); e.preventDefault();
-    if (selectedWidgetIdx !== idx) {
-        clearSelection();
-        selectedWidgetIdx = idx;
-        updateWidgetEditor(getCurrentMenu());
-    }
+
+    // 1. 确保选中并渲染（关键：先选中，再计算拖拽）
+    selectWidget(idx);
+
     const w = getCurrentMenu().custom_widgets[idx];
+    const elId = `widget-${idx}`;
+
+    // 2. 缓存 DOM（此时 DOM 已经是选中的新 DOM）
     dragData = {
-        active: true, isDragging: false, type: 'widget', mode: mode, targetIdx: idx,
-        startX: e.clientX, startY: e.clientY,
-        initialVals: { x: parseInt(w.x)||0, y: parseInt(w.y)||0, width: parseInt(w.width)||100, height: parseInt(w.height)||100 }
+        active: true,
+        isDragging: true,
+        type: 'widget',
+        mode: mode,
+        targetIdx: idx,
+        startX: e.clientX,
+        startY: e.clientY,
+        initialVals: { x: parseInt(w.x)||0, y: parseInt(w.y)||0, width: parseInt(w.width)||100, height: parseInt(w.height)||100 },
+        cachedEl: document.getElementById(elId)
     };
 }
 
+// 高性能鼠标移动处理
 function handleGlobalMouseMove(e) {
     if (!dragData.active) return;
     e.preventDefault();
-    const scale = viewState.scale || 1;
-    const dx = (e.clientX - dragData.startX) / scale;
-    const dy = (e.clientY - dragData.startY) / scale;
 
-    if (!dragData.isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) dragData.isDragging = true;
-    if (!dragData.isDragging) return;
+    // 如果已经在渲染中，则跳过本次事件（节流）
+    if (rafLock) return;
 
-    let targetEl;
-    if (dragData.type === 'item') {
-        targetEl = document.getElementById(dragData.elId);
+    rafLock = true;
+    requestAnimationFrame(() => {
+        const scale = viewState.scale || 1;
+        const dx = (e.clientX - dragData.startX) / scale;
+        const dy = (e.clientY - dragData.startY) / scale;
+        const targetEl = dragData.cachedEl;
+
         if (targetEl) {
-            if (dragData.mode === 'move') { targetEl.style.left = (dragData.initialVals.x + dx) + 'px'; targetEl.style.top = (dragData.initialVals.y + dy) + 'px'; }
-            else { targetEl.style.width = Math.max(20, dragData.initialVals.w + dx) + 'px'; targetEl.style.height = Math.max(20, dragData.initialVals.h + dy) + 'px'; }
+            if (dragData.mode === 'move') {
+                targetEl.style.left = (dragData.initialVals.x + dx) + 'px';
+                targetEl.style.top = (dragData.initialVals.y + dy) + 'px';
+            } else {
+                // resize 模式
+                const propW = dragData.type === 'widget' ? 'width' : 'w';
+                const propH = dragData.type === 'widget' ? 'height' : 'h';
+                const wVal = dragData.initialVals[propW] || 100;
+                const hVal = dragData.initialVals[propH] || 100;
+
+                targetEl.style.width = Math.max(20, wVal + dx) + 'px';
+                targetEl.style.height = Math.max(20, hVal + dy) + 'px';
+            }
         }
-    } else if (dragData.type === 'widget') {
-        const els = document.querySelectorAll(".draggable-widget");
-        targetEl = els[dragData.targetIdx];
-        if (targetEl) {
-            if (dragData.mode === 'move') { targetEl.style.left = (dragData.initialVals.x + dx) + 'px'; targetEl.style.top = (dragData.initialVals.y + dy) + 'px'; }
-            else { targetEl.style.width = Math.max(20, (dragData.initialVals.width||100) + dx) + 'px'; targetEl.style.height = Math.max(20, (dragData.initialVals.height||100) + dy) + 'px'; }
-        }
-    }
+        rafLock = false;
+    });
 }
 
 function handleGlobalMouseUp(e) {
     if (!dragData.active) return;
-    if (dragData.isDragging) {
-        const m = getCurrentMenu();
-        const scale = viewState.scale || 1;
-        const dx = (e.clientX - dragData.startX) / scale;
-        const dy = (e.clientY - dragData.startY) / scale;
-        if (dragData.type === 'item') {
-            const item = m.groups[dragData.gIdx].items[dragData.iIdx];
-            if (dragData.mode === 'move') { item.x = Math.round(dragData.initialVals.x + dx); item.y = Math.round(dragData.initialVals.y + dy); }
-            else { item.w = Math.max(20, Math.round(dragData.initialVals.w + dx)); item.h = Math.max(20, Math.round(dragData.initialVals.h + dy)); }
-        } else if (dragData.type === 'widget') {
-            const w = m.custom_widgets[dragData.targetIdx];
-            if (dragData.mode === 'move') { w.x = Math.round(dragData.initialVals.x + dx); w.y = Math.round(dragData.initialVals.y + dy); }
-            else { w.width = Math.max(20, Math.round((dragData.initialVals.width||100) + dx)); w.height = Math.max(20, Math.round((dragData.initialVals.height||100) + dy)); }
-            updateWidgetEditor(m);
+
+    // 松开鼠标时同步数据
+    const m = getCurrentMenu();
+    const scale = viewState.scale || 1;
+    const dx = (e.clientX - dragData.startX) / scale;
+    const dy = (e.clientY - dragData.startY) / scale;
+
+    if (dragData.type === 'item') {
+        const item = m.groups[dragData.gIdx].items[dragData.iIdx];
+        if (dragData.mode === 'move') {
+            item.x = Math.round(dragData.initialVals.x + dx);
+            item.y = Math.round(dragData.initialVals.y + dy);
+        } else {
+            item.w = Math.max(20, Math.round(dragData.initialVals.w + dx));
+            item.h = Math.max(20, Math.round(dragData.initialVals.h + dy));
         }
+    } else if (dragData.type === 'widget') {
+        const w = m.custom_widgets[dragData.targetIdx];
+        if (dragData.mode === 'move') {
+            w.x = Math.round(dragData.initialVals.x + dx);
+            w.y = Math.round(dragData.initialVals.y + dy);
+        } else {
+            w.width = Math.max(20, Math.round((dragData.initialVals.width||100) + dx));
+            w.height = Math.max(20, Math.round((dragData.initialVals.height||100) + dy));
+        }
+        updateWidgetEditor(m);
     }
+
     dragData.active = false;
     dragData.isDragging = false;
+    dragData.cachedEl = null;
+    rafLock = false;
 }
+
+// -------------------------------------------------------------
 
 function handleKeyDown(e) {
     if ((e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') && e.key === 'Backspace') return;
@@ -653,7 +733,6 @@ async function uploadFile(type, inp) {
 
         renderAll();
 
-        // [新增逻辑] 上传图标后自动刷新属性面板
         if (type === 'icon' && selectedItem.gIdx !== -1) {
             openContextEditor('item', selectedItem.gIdx, selectedItem.iIdx);
         }

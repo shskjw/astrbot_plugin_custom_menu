@@ -1,3 +1,4 @@
+
 const appState = {
     fullConfig: { menus: [] },
     currentMenuId: null,
@@ -11,26 +12,17 @@ let dragData = {
     isDragging: false,
     mode: 'move', // 'move' or 'resize'
     type: null,   // 'item' or 'widget'
-
-    // 数据索引
     gIdx: -1, iIdx: -1, targetIdx: -1,
-
-    // 坐标计算
     startX: 0, startY: 0,
-    initialVals: {}, // {x, y, w, h}
-
-    // 缓存 DOM 元素
+    initialVals: {},
     cachedEl: null
 };
 
-// 渲染锁
 let rafLock = false;
-
 let viewState = { scale: 1 };
 let selectedWidgetIdx = -1;
 let selectedItem = { gIdx: -1, iIdx: -1 };
 
-// --- 初始化 ---
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         await Promise.all([loadAssets(), loadConfig()]);
@@ -88,12 +80,30 @@ function createNewMenu() {
         shadow_enabled: false, shadow_color: "#000000", shadow_offset_x: 2, shadow_offset_y: 2, shadow_radius: 2,
         export_scale: 1.0
     };
-    if (!appState.fullConfig.menus) {
-        appState.fullConfig.menus = [];
-    }
+    if (!appState.fullConfig.menus) appState.fullConfig.menus = [];
     appState.fullConfig.menus.push(newMenu);
     switchMenu(newMenu.id);
 }
+
+// [新增] 复制模板功能
+function duplicateMenu() {
+    const current = getCurrentMenu();
+    if (!current) return;
+
+    // 深拷贝当前菜单配置
+    const newMenu = JSON.parse(JSON.stringify(current));
+
+    // 修改唯一ID和名称
+    newMenu.id = "m_" + Date.now();
+    newMenu.name = newMenu.name + " (副本)";
+
+    // 添加到列表并切换
+    appState.fullConfig.menus.push(newMenu);
+    switchMenu(newMenu.id);
+
+    alert(`✅ 已复制模板：${newMenu.name}`);
+}
+
 function deleteMenu() { if(appState.fullConfig.menus.length <=1) return alert("保留一个"); if(confirm("删除?")) { appState.fullConfig.menus = appState.fullConfig.menus.filter(m=>m.id!==appState.currentMenuId); switchMenu(appState.fullConfig.menus[0].id); } }
 function toggleEnable() { const m = getCurrentMenu(); m.enabled = !m.enabled; renderMenuSelect(); }
 
@@ -124,7 +134,6 @@ function updateFormInputs(m) {
 
     renderSelect("fTitle", appState.assets.fonts, m.title_font); renderSelect("fGTitle", appState.assets.fonts, m.group_title_font); renderSelect("fGSub", appState.assets.fonts, m.group_sub_font); renderSelect("fIName", appState.assets.fonts, m.item_name_font); renderSelect("fIDesc", appState.assets.fonts, m.item_desc_font);
 
-    // 阴影设置回显
     document.getElementById("shadowEn").checked = !!m.shadow_enabled;
     setValue("shadowColP", m.shadow_color || "#000000"); setValue("shadowColT", m.shadow_color || "#000000");
     setValue("shadowX", m.shadow_offset_x !== undefined ? m.shadow_offset_x : 2);
@@ -328,10 +337,8 @@ function renderWidgets(container, m, shadowCss) {
             el.style.textShadow = shadowCss;
         }
 
-        // 绑定移动
         el.onmousedown = (e) => initWidgetDrag(e, idx, 'move');
 
-        // 绑定缩放手柄
         const handle = document.createElement("div");
         handle.className = "resize-handle";
         handle.onmousedown = (e) => initWidgetDrag(e, idx, 'resize');
@@ -344,7 +351,6 @@ function hexToRgba(hex, alpha) { if(!hex) return `rgba(0,0,0,${alpha})`; const r
 
 // --- 统一的选中逻辑 ---
 function selectWidget(idx) {
-    // 只有当真正切换了选中项时才重绘，避免拖拽时闪烁
     if (selectedWidgetIdx !== idx) {
         selectedItem = { gIdx: -1, iIdx: -1 };
         selectedWidgetIdx = idx;
@@ -566,20 +572,18 @@ function initItemDrag(e, gIdx, iIdx, mode) {
     };
 }
 
-// 核心修复：完全对齐 Item 的拖拽逻辑
 function initWidgetDrag(e, idx, mode) {
     e.stopPropagation(); e.preventDefault();
 
-    // 1. 确保选中并渲染（关键：先选中，再计算拖拽）
+    // 关键：确保选中并渲染，这样 DOM 才是最新的选中态
     selectWidget(idx);
 
     const w = getCurrentMenu().custom_widgets[idx];
     const elId = `widget-${idx}`;
 
-    // 2. 缓存 DOM（此时 DOM 已经是选中的新 DOM）
     dragData = {
         active: true,
-        isDragging: true,
+        isDragging: true, // 核心：立即设为true，取消拖拽门槛
         type: 'widget',
         mode: mode,
         targetIdx: idx,
@@ -590,12 +594,11 @@ function initWidgetDrag(e, idx, mode) {
     };
 }
 
-// 高性能鼠标移动处理
 function handleGlobalMouseMove(e) {
     if (!dragData.active) return;
     e.preventDefault();
 
-    // 如果已经在渲染中，则跳过本次事件（节流）
+    // 节流锁
     if (rafLock) return;
 
     rafLock = true;
@@ -610,7 +613,6 @@ function handleGlobalMouseMove(e) {
                 targetEl.style.left = (dragData.initialVals.x + dx) + 'px';
                 targetEl.style.top = (dragData.initialVals.y + dy) + 'px';
             } else {
-                // resize 模式
                 const propW = dragData.type === 'widget' ? 'width' : 'w';
                 const propH = dragData.type === 'widget' ? 'height' : 'h';
                 const wVal = dragData.initialVals[propW] || 100;
@@ -627,7 +629,7 @@ function handleGlobalMouseMove(e) {
 function handleGlobalMouseUp(e) {
     if (!dragData.active) return;
 
-    // 松开鼠标时同步数据
+    // 松开鼠标时同步数据到 config
     const m = getCurrentMenu();
     const scale = viewState.scale || 1;
     const dx = (e.clientX - dragData.startX) / scale;
@@ -793,7 +795,6 @@ function deleteWidget() {
 
 function updateMenuMeta(key, val) {
     const m = getCurrentMenu();
-    // 添加阴影相关字段到int转换列表
     if(['layout_columns', 'canvas_width', 'canvas_height', 'group_blur_radius', 'item_blur_radius', 'group_bg_alpha', 'item_bg_alpha', 'shadow_offset_x', 'shadow_offset_y', 'shadow_radius'].includes(key)) {
         m[key] = parseInt(val);
     } else if (key === 'use_canvas_size' || key === 'shadow_enabled') {

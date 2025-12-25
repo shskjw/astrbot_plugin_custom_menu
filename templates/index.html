@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>菜单编辑器 v1.4 </title>
-    <link rel="stylesheet" href="/static/style.css?v=1.4">
+    <title>菜单编辑器 v1.5 </title>
+    <link rel="stylesheet" href="/static/style.css?v=1.5">
 </head>
 <body>
 
@@ -12,12 +12,17 @@
         <label>当前编辑菜单</label>
         <div style="display:flex; gap:5px; margin-bottom:5px;">
             <select id="menuSelect" onchange="switchMenu(this.value)" style="flex:1"></select>
-            <button class="icon-btn" onclick="createNewMenu()">+</button>
+            <!-- 保留原有的新建按钮 -->
+            <button class="icon-btn" onclick="createNewMenu()" title="新建空白菜单">+</button>
         </div>
         <div style="display:flex; gap:5px;">
             <input id="menuNameInput" placeholder="名称" oninput="updateMenuMeta('name', this.value)" style="flex:1">
             <button class="icon-btn" id="enableBtn" onclick="toggleEnable()">启用</button>
-            <button class="icon-btn" style="color:#f56c6c; border-color:#f56c6c" onclick="deleteMenu()">🗑️</button>
+
+            <!-- [新增] 复制按钮 -->
+            <button class="icon-btn" onclick="duplicateMenu()" title="复制当前模板">📑</button>
+
+            <button class="icon-btn" style="color:#f56c6c; border-color:#f56c6c" onclick="deleteMenu()" title="删除">🗑️</button>
         </div>
     </div>
 
@@ -62,7 +67,7 @@
                     <div><label>高 (px)</label><input type="number" id="cvsH" oninput="updateMenuMeta('canvas_height', this.value)"></div>
                 </div>
 
-                <!-- 修改：自定义导出倍率 -->
+                <!-- 自定义导出倍率 -->
                 <div class="form-row">
                     <label>🚀 导出倍率 分辨率 (Export Scale)</label>
                     <div style="display:flex; align-items:center; gap:5px;">
@@ -181,6 +186,6 @@
     </div>
 </div>
 
-<script src="/static/editor.js?v=1.4"></script>
+<script src="/static/editor.js?v=1.5"></script>
 </body>
 </html>

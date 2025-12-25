@@ -1,4 +1,3 @@
-
 const appState = {
     fullConfig: { menus: [] },
     currentMenuId: null,
@@ -12,17 +11,26 @@ let dragData = {
     isDragging: false,
     mode: 'move', // 'move' or 'resize'
     type: null,   // 'item' or 'widget'
+
+    // 数据索引
     gIdx: -1, iIdx: -1, targetIdx: -1,
+
+    // 坐标计算
     startX: 0, startY: 0,
-    initialVals: {},
+    initialVals: {}, // {x, y, w, h, size}
+
+    // 缓存 DOM 元素
     cachedEl: null
 };
 
+// 渲染锁
 let rafLock = false;
+
 let viewState = { scale: 1 };
 let selectedWidgetIdx = -1;
 let selectedItem = { gIdx: -1, iIdx: -1 };
 
+// --- 初始化 ---
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         await Promise.all([loadAssets(), loadConfig()]);
@@ -85,22 +93,14 @@ function createNewMenu() {
     switchMenu(newMenu.id);
 }
 
-// [新增] 复制模板功能
 function duplicateMenu() {
     const current = getCurrentMenu();
     if (!current) return;
-
-    // 深拷贝当前菜单配置
     const newMenu = JSON.parse(JSON.stringify(current));
-
-    // 修改唯一ID和名称
     newMenu.id = "m_" + Date.now();
     newMenu.name = newMenu.name + " (副本)";
-
-    // 添加到列表并切换
     appState.fullConfig.menus.push(newMenu);
     switchMenu(newMenu.id);
-
     alert(`✅ 已复制模板：${newMenu.name}`);
 }
 
@@ -283,6 +283,7 @@ function renderCanvas(m) {
             if (freeMode) {
                 const isSel = selectedItem.gIdx === gIdx && selectedItem.iIdx === iIdx;
                 const tx = parseInt(item.x)||0; const ty = parseInt(item.y)||0; const tw = parseInt(item.w)||200; const th = parseInt(item.h)||80;
+                // 添加 resize-handle 的事件处理，注意 event.stopPropagation
                 html += `
                 <div class="free-item ${isSel ? 'selected' : ''}"
                      id="item-${gIdx}-${iIdx}"
@@ -330,10 +331,13 @@ function renderWidgets(container, m, shadowCss) {
             el.style.width = (parseInt(wid.width)||100) + "px";
             el.style.height = (parseInt(wid.height)||100) + "px";
         } else {
+            // [字体修复]: 强制给字体加引号，防止数字开头的字体失效
             el.innerText = wid.text || "Text";
             el.style.fontSize = (parseInt(wid.size)||40) + "px";
             el.style.color = wid.color || "#FFF";
-            el.style.fontFamily = cssFont(wid.font);
+            if (wid.font) {
+                el.style.fontFamily = `"${cssFont(wid.font)}"`;
+            }
             el.style.textShadow = shadowCss;
         }
 
@@ -548,7 +552,7 @@ function deleteCurrentItemProp(gIdx, iIdx) {
 }
 
 // -------------------------------------------------------------
-//  核心拖拽逻辑 (点击即拖 + 高性能)
+//  核心拖拽逻辑 (点击即拖 + 高性能 + 文本字号优化)
 // -------------------------------------------------------------
 
 function initItemDrag(e, gIdx, iIdx, mode) {
@@ -575,21 +579,27 @@ function initItemDrag(e, gIdx, iIdx, mode) {
 function initWidgetDrag(e, idx, mode) {
     e.stopPropagation(); e.preventDefault();
 
-    // 关键：确保选中并渲染，这样 DOM 才是最新的选中态
-    selectWidget(idx);
+    selectWidget(idx); // 确保选中
 
     const w = getCurrentMenu().custom_widgets[idx];
     const elId = `widget-${idx}`;
 
+    // 缓存数据，如果是文本则缓存字号
     dragData = {
         active: true,
-        isDragging: true, // 核心：立即设为true，取消拖拽门槛
+        isDragging: true,
         type: 'widget',
         mode: mode,
         targetIdx: idx,
         startX: e.clientX,
         startY: e.clientY,
-        initialVals: { x: parseInt(w.x)||0, y: parseInt(w.y)||0, width: parseInt(w.width)||100, height: parseInt(w.height)||100 },
+        initialVals: {
+            x: parseInt(w.x)||0,
+            y: parseInt(w.y)||0,
+            width: parseInt(w.width)||100,
+            height: parseInt(w.height)||100,
+            size: parseInt(w.size)||40 // 缓存初始字号
+        },
         cachedEl: document.getElementById(elId)
     };
 }
@@ -598,7 +608,6 @@ function handleGlobalMouseMove(e) {
     if (!dragData.active) return;
     e.preventDefault();
 
-    // 节流锁
     if (rafLock) return;
 
     rafLock = true;
@@ -613,13 +622,28 @@ function handleGlobalMouseMove(e) {
                 targetEl.style.left = (dragData.initialVals.x + dx) + 'px';
                 targetEl.style.top = (dragData.initialVals.y + dy) + 'px';
             } else {
-                const propW = dragData.type === 'widget' ? 'width' : 'w';
-                const propH = dragData.type === 'widget' ? 'height' : 'h';
-                const wVal = dragData.initialVals[propW] || 100;
-                const hVal = dragData.initialVals[propH] || 100;
+                // resize 模式
+                const m = getCurrentMenu();
+                const widget = m.custom_widgets[dragData.targetIdx];
 
-                targetEl.style.width = Math.max(20, wVal + dx) + 'px';
-                targetEl.style.height = Math.max(20, hVal + dy) + 'px';
+                // [字号拖拽修复]: 支持向右或向下拖动来放大
+                if (dragData.type === 'widget' && widget.type === 'text') {
+                    // 取 dx 和 dy 的最大值，操作更顺滑
+                    let delta = Math.max(dx, dy);
+                    let newSize = Math.max(10, dragData.initialVals.size + delta);
+                    targetEl.style.fontSize = newSize + "px";
+
+                    const sizeInp = document.getElementById("widSize");
+                    if(sizeInp) sizeInp.value = Math.round(newSize);
+                } else {
+                    const propW = dragData.type === 'widget' ? 'width' : 'w';
+                    const propH = dragData.type === 'widget' ? 'height' : 'h';
+                    const wVal = dragData.initialVals[propW] || 100;
+                    const hVal = dragData.initialVals[propH] || 100;
+
+                    targetEl.style.width = Math.max(20, wVal + dx) + 'px';
+                    targetEl.style.height = Math.max(20, hVal + dy) + 'px';
+                }
             }
         }
         rafLock = false;
@@ -629,7 +653,7 @@ function handleGlobalMouseMove(e) {
 function handleGlobalMouseUp(e) {
     if (!dragData.active) return;
 
-    // 松开鼠标时同步数据到 config
+    // 松开鼠标时同步数据
     const m = getCurrentMenu();
     const scale = viewState.scale || 1;
     const dx = (e.clientX - dragData.startX) / scale;
@@ -650,8 +674,14 @@ function handleGlobalMouseUp(e) {
             w.x = Math.round(dragData.initialVals.x + dx);
             w.y = Math.round(dragData.initialVals.y + dy);
         } else {
-            w.width = Math.max(20, Math.round((dragData.initialVals.width||100) + dx));
-            w.height = Math.max(20, Math.round((dragData.initialVals.height||100) + dy));
+            // 保存 Resize 结果
+            if (w.type === 'text') {
+                let delta = Math.max(dx, dy);
+                w.size = Math.max(10, Math.round(dragData.initialVals.size + delta));
+            } else {
+                w.width = Math.max(20, Math.round((dragData.initialVals.width||100) + dx));
+                w.height = Math.max(20, Math.round((dragData.initialVals.height||100) + dy));
+            }
         }
         updateWidgetEditor(m);
     }

@@ -18,8 +18,10 @@ pip show pillow
 ```text
 pip install Pillow imageio imageio-ffmpeg
 ```
-
-
+国内下载慢可以用下面清华源的加速
+```text
+pip install Pillow imageio imageio-ffmpeg -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
 ## 效果展示
 
 展示网站 [效果展示，演示网站]( http://124.156.214.104:9876/) 密码：astrbot123

@@ -2,8 +2,9 @@ import json
 import uuid
 import shutil
 import sys
+import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 # AstrBot API
 try:
@@ -28,76 +29,66 @@ class PluginStorage:
         return cls._instance
 
     def __init__(self):
-        if self._initialized:
-            return
+        if self._initialized: return
         self.base_dir = Path(__file__).parent
         self.data_dir: Optional[Path] = None
         self.assets_dir: Optional[Path] = None
         self.bg_dir: Optional[Path] = None
         self.icon_dir: Optional[Path] = None
         self.img_dir: Optional[Path] = None
+        self.video_dir: Optional[Path] = None
+        self.outputs_dir: Optional[Path] = None
         self.menu_file: Optional[Path] = None
         self.fonts_dir: Optional[Path] = None
         self._initialized = True
 
     def init_paths(self, custom_data_dir: str = None):
-        """
-        Initialize paths. Must be called explicitly.
-        """
         if custom_data_dir:
             self.data_dir = Path(custom_data_dir)
         elif _HAS_ASTRBOT:
-            # Use framework standard path
             self.data_dir = StarTools.get_data_dir("astrbot_plugin_custom_menu")
         else:
             self.data_dir = self.base_dir / "data"
 
-        # Define sub-paths
         self.assets_dir = self.data_dir / "assets"
         self.bg_dir = self.assets_dir / "backgrounds"
         self.icon_dir = self.assets_dir / "icons"
         self.img_dir = self.assets_dir / "widgets"
+        self.video_dir = self.assets_dir / "videos"
+        self.outputs_dir = self.data_dir / "outputs"
         self.menu_file = self.data_dir / "menu.json"
-
-        # --- 修改：字体路径迁移到 assets/fonts ---
         self.fonts_dir = self.assets_dir / "fonts"
-
         self._init_directories()
 
     def _init_directories(self):
         if self.data_dir:
             self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.assets_dir.mkdir(parents=True, exist_ok=True)
             self.bg_dir.mkdir(parents=True, exist_ok=True)
             self.icon_dir.mkdir(parents=True, exist_ok=True)
             self.img_dir.mkdir(parents=True, exist_ok=True)
+            self.video_dir.mkdir(parents=True, exist_ok=True)
+            self.outputs_dir.mkdir(parents=True, exist_ok=True)
             self.fonts_dir.mkdir(parents=True, exist_ok=True)
 
-            # --- 新增：复制默认字体到数据目录 ---
-            # 这样用户既可以上传新字体，也能使用插件自带的默认字体
             source_fonts = self.base_dir / "fonts"
             if source_fonts.exists():
-                for font_file in source_fonts.glob("*.*"):  # copy all files
+                for font_file in source_fonts.glob("*.*"):
                     target = self.fonts_dir / font_file.name
                     if not target.exists():
                         try:
                             shutil.copy(font_file, target)
-                            logger.info(f"已初始化默认字体: {font_file.name}")
-                        except Exception as e:
-                            logger.warning(f"无法复制默认字体 {font_file.name}: {e}")
+                        except Exception:
+                            pass
 
     def migrate_data(self):
-        """
-        Perform data migration. This involves file I/O and should be run in a thread.
-        """
         old_data_dir = self.base_dir / "data"
         if old_data_dir.exists() and self.data_dir and not self.data_dir.exists():
             try:
-                # Check if old_data_dir is not the same as new data_dir to avoid recursive copy errors
                 if old_data_dir.resolve() != self.data_dir.resolve():
                     shutil.copytree(old_data_dir, self.data_dir, dirs_exist_ok=True)
-                    logger.info("✅ 旧数据迁移完成")
-            except Exception as e:
-                logger.error(f"❌ 数据迁移失败: {e}")
+            except Exception:
+                pass
 
     def create_default_menu(self, name="默认菜单"):
         return {
@@ -111,8 +102,16 @@ class PluginStorage:
             "canvas_width": 1000,
             "canvas_height": 2000,
             "canvas_color": "#1e1e1e",
-            "canvas_padding": 40,
             "export_scale": 1.0,
+            "bg_type": "image",
+            "bg_video": "",
+            "video_start": 0.0,
+            "video_end": 0.0,
+            "video_fps_mode": "fixed",
+            "video_fps": 15,
+            "video_frame_ratio": 1,
+            "video_scale": 1.0,
+            "video_export_format": "apng",
             "background": "",
             "bg_fit_mode": "cover_w",
             "bg_custom_width": 1000,
@@ -163,26 +162,19 @@ class PluginStorage:
         }
 
     def load_config(self) -> Dict[str, Any]:
-        default_root = {"version": 8, "menus": [self.create_default_menu()]}
-
+        default_root = {"version": 16, "menus": [self.create_default_menu()]}
         if not self.menu_file or not self.menu_file.exists():
-            if self.menu_file:
-                self.save_config(default_root)
+            if self.menu_file: self.save_config(default_root)
             return default_root
-
         try:
             data = json.loads(self.menu_file.read_text(encoding="utf-8"))
             return data
-        except Exception as e:
-            logger.error(f"加载配置失败: {e}")
+        except Exception:
             return default_root
 
     def save_config(self, data: Dict[str, Any]):
         if self.menu_file:
-            self.menu_file.write_text(
-                json.dumps(data, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
+            self.menu_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def get_assets_list(self) -> Dict[str, list]:
         def scan(path: Path, exts: list):
@@ -193,9 +185,58 @@ class PluginStorage:
             "backgrounds": scan(self.bg_dir, ['.png', '.jpg', '.jpeg']),
             "icons": scan(self.icon_dir, ['.png', '.jpg', '.jpeg']),
             "widget_imgs": scan(self.img_dir, ['.png', '.jpg', '.jpeg', '.gif']),
-            "fonts": scan(self.fonts_dir, ['.ttf', '.otf', '.ttc'])
+            "fonts": scan(self.fonts_dir, ['.ttf', '.otf', '.ttc']),
+            "videos": scan(self.video_dir, ['.mp4', '.mov', '.webm', '.avi', '.mkv'])
         }
 
+    def get_menu_output_cache_path(self, menu_id: str, is_video: bool, output_format: str = "png") -> Path:
+        """
+        获取缓存路径。
+        is_video=False -> .png (静态图统一用png)
+        is_video=True -> .png(apng) / .webp / .gif
+        """
+        if not self.outputs_dir: self.init_paths()
 
-# --- 关键：必须实例化变量 ---
+        if not is_video:
+            ext = "png"  # [恢复] 静态用 png
+        else:
+            fmt = output_format.lower()
+            if fmt == 'apng':
+                ext = 'png'
+            elif fmt == 'webp':
+                ext = 'webp'
+            elif fmt == 'gif':
+                ext = 'gif'
+            else:
+                ext = 'png'
+
+        return self.outputs_dir / f"menu_{menu_id}.{ext}"
+
+    def cleanup_unused_caches(self, current_menus: List[Dict]):
+        if not self.outputs_dir or not self.outputs_dir.exists(): return
+
+        valid_ids = {m['id'] for m in current_menus if m.get('enabled', True)}
+        all_ids = {m['id'] for m in current_menus}
+
+        for f in self.outputs_dir.glob("menu_*.*"):
+            try:
+                stem = f.stem
+                if not stem.startswith("menu_"): continue
+                mid = stem[5:]
+                if mid not in all_ids or mid not in valid_ids:
+                    f.unlink()
+            except:
+                pass
+
+    def clear_menu_cache(self, menu_id: str):
+        if not self.outputs_dir: return
+        for ext in ['jpg', 'png', 'webp', 'gif']:
+            f = self.outputs_dir / f"menu_{menu_id}.{ext}"
+            if f.exists():
+                try:
+                    f.unlink()
+                except:
+                    pass
+
+
 plugin_storage = PluginStorage()

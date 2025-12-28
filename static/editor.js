@@ -1,7 +1,7 @@
 const appState = {
     fullConfig: { menus: [] },
     currentMenuId: null,
-    assets: { backgrounds: [], icons: [], widget_imgs: [], fonts: [] },
+    assets: { backgrounds: [], icons: [], widget_imgs: [], fonts: [], videos: [] },
     clipboard: null
 };
 
@@ -11,15 +11,9 @@ let dragData = {
     isDragging: false,
     mode: 'move', // 'move' or 'resize'
     type: null,   // 'item' or 'widget'
-
-    // 数据索引
     gIdx: -1, iIdx: -1, targetIdx: -1,
-
-    // 坐标计算
     startX: 0, startY: 0,
-    initialVals: {}, // {x, y, w, h, size}
-
-    // 缓存 DOM 元素
+    initialVals: {},
     cachedEl: null
 };
 
@@ -47,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const cvsWrapper = document.getElementById('canvas-wrapper');
         cvsWrapper.addEventListener('mousedown', (e) => {
-            if (e.target.id === 'canvas-wrapper' || e.target.id === 'canvas' || e.target.classList.contains('group-wrapper')) {
+            if (e.target.id === 'canvas-wrapper' || e.target.id === 'canvas' || e.target.classList.contains('group-wrapper') || e.target.id === 'canvas-video-preview') {
                 clearSelection();
             }
         });
@@ -65,7 +59,27 @@ async function api(url, method = "GET", body = null) {
 async function loadConfig() { appState.fullConfig = await api("/config"); }
 async function loadAssets() { appState.assets = await api("/assets"); }
 async function saveAll() { await api("/config", "POST", appState.fullConfig); alert("✅ 已保存"); }
-async function exportImage() { await api("/config", "POST", appState.fullConfig); const menu = getCurrentMenu(); const res = await fetch("/api/export_image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(menu) }); if(res.ok) { const blob = await res.blob(); const a = document.createElement("a"); a.href = window.URL.createObjectURL(blob); a.download = `${menu.name}.png`; a.click(); } else alert("导出失败"); }
+
+async function exportImage() {
+    await api("/config", "POST", appState.fullConfig);
+    const menu = getCurrentMenu();
+    if (menu.bg_type === 'video') alert("⏳ 正在生成动图，视频处理较慢，请耐心等待...");
+
+    const res = await fetch("/api/export_image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(menu) });
+    if(res.ok) {
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = window.URL.createObjectURL(blob);
+        const isAnim = menu.bg_type === 'video' && menu.bg_video;
+        let ext = 'png'; // Static defaults to png
+        if (isAnim) {
+            const fmt = menu.video_export_format || 'apng';
+            ext = (fmt === 'apng') ? 'png' : fmt;
+        }
+        a.download = `${menu.name}.${ext}`;
+        a.click();
+    } else alert("导出失败");
+}
 
 function getStyle(obj, key, fallbackGlobalKey) {
     const m = getCurrentMenu();
@@ -86,7 +100,9 @@ function createNewMenu() {
         layout_columns: 3, group_bg_color: "#000000", group_bg_alpha: 50, item_bg_color: "#FFFFFF", item_bg_alpha: 20,
         use_canvas_size: false, canvas_width: 1000, canvas_height: 2000,
         shadow_enabled: false, shadow_color: "#000000", shadow_offset_x: 2, shadow_offset_y: 2, shadow_radius: 2,
-        export_scale: 1.0
+        export_scale: 1.0,
+        bg_type: "image", bg_custom_width: 1000, bg_custom_height: 1000,
+        video_fps: 15, video_scale: 1.0, video_export_format: "apng"
     };
     if (!appState.fullConfig.menus) appState.fullConfig.menus = [];
     appState.fullConfig.menus.push(newMenu);
@@ -104,7 +120,19 @@ function duplicateMenu() {
     alert(`✅ 已复制模板：${newMenu.name}`);
 }
 
-function deleteMenu() { if(appState.fullConfig.menus.length <=1) return alert("保留一个"); if(confirm("删除?")) { appState.fullConfig.menus = appState.fullConfig.menus.filter(m=>m.id!==appState.currentMenuId); switchMenu(appState.fullConfig.menus[0].id); } }
+function deleteMenu() {
+    if(appState.fullConfig.menus.length <= 1) return alert("至少保留一个菜单模板。");
+    if(confirm("确定删除当前菜单模板？此操作不可逆。")) {
+        const menuToDeleteId = appState.currentMenuId;
+        appState.fullConfig.menus = appState.fullConfig.menus.filter(m => m.id !== menuToDeleteId);
+        // 触发一次保存以清理后端缓存
+        api("/config", "POST", appState.fullConfig).then(() => {
+             switchMenu(appState.fullConfig.menus[0].id);
+             alert("✅ 菜单已删除，对应的缓存已清除。");
+        });
+    }
+}
+
 function toggleEnable() { const m = getCurrentMenu(); m.enabled = !m.enabled; renderMenuSelect(); }
 
 function renderMenuSelect() {
@@ -126,8 +154,29 @@ function updateFormInputs(m) {
     setValue("expScaleInput", m.export_scale || 1.0);
 
     setValue("cvsColorP", m.canvas_color || "#1e1e1e"); setValue("cvsColorT", m.canvas_color || "#1e1e1e");
+
+    setValue("bgType", m.bg_type || "image");
     renderSelect("bgSelect", appState.assets.backgrounds, m.background, "无背景");
     setValue("bgFit", m.bg_fit_mode || "cover_w");
+    setValue("bgCustomW", m.bg_custom_width || 1000);
+    setValue("bgCustomH", m.bg_custom_height || 1000);
+    toggleBgCustomInputs();
+
+    // Video Fields
+    renderSelect("vidSelect", appState.assets.videos, m.bg_video, "无视频");
+    setValue("vStart", m.video_start || 0);
+    setValue("vEnd", m.video_end || "");
+    // vDur and vTimeMode removed
+    setValue("vFps", m.video_fps || 15);
+    setValue("vRatio", m.video_frame_ratio || 1);
+    setValue("vScale", m.video_scale || 1.0);
+    setValue("vAlign", m.video_align || "center");
+    setValue("vFormat", m.video_export_format || "apng");
+
+    setRadioValue("vFpsMode", m.video_fps_mode || "fixed");
+
+    toggleBgPanel();
+    toggleVideoInputs();
 
     setValue("boxColor", m.group_bg_color || "#000000"); setValue("boxBlur", m.group_blur_radius || 0); setValue("boxAlpha", m.group_bg_alpha !== undefined ? m.group_bg_alpha : 50); document.getElementById("alphaVal").innerText = m.group_bg_alpha !== undefined ? m.group_bg_alpha : 50;
     setValue("iboxColor", m.item_bg_color || "#FFFFFF"); setValue("iboxBlur", m.item_blur_radius || 0); setValue("iboxAlpha", m.item_bg_alpha !== undefined ? m.item_bg_alpha : 20); document.getElementById("ialphaVal").innerText = m.item_bg_alpha !== undefined ? m.item_bg_alpha : 20;
@@ -143,7 +192,49 @@ function updateFormInputs(m) {
     const map = {'title_color': ['cTitleP', 'cTitleT'], 'subtitle_color': ['cSubP', 'cSubT'], 'group_title_color': ['cGTitleP', 'cGTitleT'], 'group_sub_color': ['cGSubP', 'cGSubT'], 'item_name_color': ['cItemNameP', 'cItemNameT'], 'item_desc_color': ['cItemDescP', 'cItemDescT']};
     for (const [k, ids] of Object.entries(map)) { const val = m[k] || "#FFFFFF"; ids.forEach(id => { if (document.getElementById(id)) document.getElementById(id).value = val; }); }
 }
+
+function toggleBgCustomInputs() {
+    const fitMode = document.getElementById('bgFit').value;
+    const customInputs = document.getElementById('bg-custom-size-inputs');
+    if (customInputs) {
+        customInputs.style.display = (fitMode === 'custom') ? 'block' : 'none';
+    }
+}
+
+function toggleBgPanel() {
+    const type = document.getElementById("bgType").value;
+    const imgPanel = document.getElementById("panel-bg-image");
+    const vidPanel = document.getElementById("panel-bg-video");
+    const videoPreview = document.getElementById('canvas-video-preview');
+
+    if (type === 'video') {
+        imgPanel.style.display = "none";
+        vidPanel.style.display = "block";
+        videoPreview.style.display = 'block';
+    } else {
+        imgPanel.style.display = "block";
+        vidPanel.style.display = "none";
+        videoPreview.style.display = 'none';
+    }
+    renderCanvas(getCurrentMenu());
+}
+
+function toggleVideoInputs() {
+    const fMode = document.querySelector('input[name="vFpsMode"]:checked')?.value || "fixed";
+    if (fMode === "fixed") {
+        document.getElementById("grp-vFps").style.display = "block";
+        document.getElementById("grp-vRatio").style.display = "none";
+    } else {
+        document.getElementById("grp-vFps").style.display = "none";
+        document.getElementById("grp-vRatio").style.display = "block";
+    }
+}
+
 function setValue(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+function setRadioValue(name, val) {
+    const els = document.getElementsByName(name);
+    for(let el of els) { if(el.value === val) el.checked = true; }
+}
 function renderSelect(id, opts, sel, def) { const el = document.getElementById(id); if (!el) return; el.innerHTML = (def ? `<option value="">${def}</option>` : '') + (opts || []).map(o => `<option value="${o}" ${o===sel?'selected':''}>${o}</option>`).join(''); }
 
 function renderCanvas(m) {
@@ -169,21 +260,6 @@ function renderCanvas(m) {
     cvs.style.transformOrigin = "top left";
     cvs.style.minHeight = "800px";
 
-    if (m.background && !useFixedSize) {
-        const tmpImg = new Image();
-        tmpImg.src = `/raw_assets/backgrounds/${m.background}`;
-        tmpImg.onload = () => {
-             const ratio = tmpImg.height / tmpImg.width;
-             const bgFitHeight = targetW * ratio;
-             if (cvs.offsetHeight < bgFitHeight) {
-                 cvs.style.minHeight = bgFitHeight + "px";
-                 if (!useFixedSize) {
-                     cvsWrapper.style.height = (cvs.offsetHeight * scale) + "px";
-                 }
-             }
-        };
-    }
-
     if (useFixedSize) {
         cvs.style.height = targetH + "px";
         cvs.style.minHeight = targetH + "px";
@@ -195,13 +271,56 @@ function renderCanvas(m) {
         cvsWrapper.style.height = "auto";
     }
 
-    cvs.style.backgroundColor = m.canvas_color || "#1e1e1e";
-    cvs.style.backgroundImage = m.background ? `url('/raw_assets/backgrounds/${m.background}')` : "none";
-    if (m.background) {
-        cvs.style.backgroundRepeat = "no-repeat";
-        cvs.style.backgroundSize = m.bg_fit_mode === "custom" ? `${m.bg_custom_width}px ${m.bg_custom_height}px` : "100% auto";
-        cvs.style.backgroundPosition = "top center";
+    const videoPreview = document.getElementById('canvas-video-preview');
+    if (m.bg_type === 'video' && m.bg_video) {
+        cvs.style.backgroundColor = "transparent"; // Video mode needs transparent canvas
+        const vidUrl = `/raw_assets/videos/${m.bg_video}`;
+        if (!videoPreview.src.includes(encodeURI(m.bg_video))) {
+             videoPreview.src = vidUrl;
+        }
+
+        videoPreview.style.display = 'block';
+        videoPreview.style.width = '100%';
+        videoPreview.style.height = '100%';
+        videoPreview.style.objectFit = 'cover';
+        videoPreview.style.top = '0';
+        videoPreview.style.left = '0';
+
+        const videoContentScale = parseFloat(m.video_scale || 1.0);
+        const videoAlign = m.video_align || "center";
+
+        if (videoContentScale !== 1.0) {
+            videoPreview.style.transform = `scale(${videoContentScale})`;
+            videoPreview.style.transformOrigin = 'center center';
+            videoPreview.style.objectFit = 'contain';
+        } else {
+             videoPreview.style.transform = 'none';
+             videoPreview.style.transformOrigin = 'unset';
+        }
+
+        switch (videoAlign) {
+            case "top": videoPreview.style.objectPosition = "center top"; break;
+            case "bottom": videoPreview.style.objectPosition = "center bottom"; break;
+            case "center": default: videoPreview.style.objectPosition = "center center"; break;
+        }
+
+        cvs.style.backgroundImage = "none";
+    } else {
+        videoPreview.style.display = 'none';
+        videoPreview.src = '';
+
+        cvs.style.backgroundColor = m.canvas_color || "#1e1e1e";
+
+        if (m.background) {
+            cvs.style.backgroundImage = `url('/raw_assets/backgrounds/${m.background}')`;
+            cvs.style.backgroundRepeat = "no-repeat";
+            cvs.style.backgroundSize = m.bg_fit_mode === "custom" ? `${m.bg_custom_width || 1000}px ${m.bg_custom_height || 1000}px` : "100% auto";
+            cvs.style.backgroundPosition = m.bg_align_x + ' ' + m.bg_align_y;
+        } else {
+            cvs.style.backgroundImage = "none";
+        }
     }
+
 
     let shadowCss = 'none';
     if (m.shadow_enabled) {
@@ -229,7 +348,7 @@ function renderCanvas(m) {
         const gTitleColor = getStyle(g, 'title_color', 'group_title_color');
         const gSubColor = getStyle(g, 'sub_color', 'group_sub_color');
         const gTitleSize = getStyle(g, 'title_size', 'group_title_size') || 30;
-        const gSubSize = get_style(g, 'sub_size', 'group_sub_size') || 18;
+        const gSubSize = getStyle(g, 'sub_size', 'group_sub_size') || 18;
         const gBgColor = getStyle(g, 'bg_color', 'group_bg_color') || "#000000";
         const gBgAlpha = g.bg_alpha !== undefined ? g.bg_alpha : (m.group_bg_alpha !== undefined ? m.group_bg_alpha : 50);
         const gRgba = hexToRgba(gBgColor, gBgAlpha / 255);
@@ -283,7 +402,7 @@ function renderCanvas(m) {
             if (freeMode) {
                 const isSel = selectedItem.gIdx === gIdx && selectedItem.iIdx === iIdx;
                 const tx = parseInt(item.x)||0; const ty = parseInt(item.y)||0; const tw = parseInt(item.w)||200; const th = parseInt(item.h)||80;
-                // 添加 resize-handle 的事件处理，注意 event.stopPropagation
+                // 添加 resize-handle 的事件处理
                 html += `
                 <div class="free-item ${isSel ? 'selected' : ''}"
                      id="item-${gIdx}-${iIdx}"
@@ -331,7 +450,6 @@ function renderWidgets(container, m, shadowCss) {
             el.style.width = (parseInt(wid.width)||100) + "px";
             el.style.height = (parseInt(wid.height)||100) + "px";
         } else {
-            // [字体修复]: 强制给字体加引号，防止数字开头的字体失效
             el.innerText = wid.text || "Text";
             el.style.fontSize = (parseInt(wid.size)||40) + "px";
             el.style.color = wid.color || "#FFF";
@@ -531,7 +649,7 @@ function updateProp(type, gIdx, iIdx, key, val) {
     if (val === "") {
         delete obj[key];
     } else {
-        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size'].includes(key)) {
+        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height'].includes(key)) {
             val = parseInt(val);
         }
         obj[key] = val;
@@ -751,17 +869,29 @@ function addItem(gIdx) {
 }
 
 function addGroup() { getCurrentMenu().groups.push({ title: "新分组", subtitle: "", items: [], free_mode: false }); renderAll(); }
-function deleteGroup(idx) { if (confirm("删除此分组？")) { getCurrentMenu().groups.splice(idx, 1); clearSelection(); } }
+function deleteGroup(idx) {
+    if (confirm("确定删除此分组？")) {
+        getCurrentMenu().groups.splice(idx, 1);
+        clearSelection();
+    }
+}
 function moveGroup(idx, dir) { const g = getCurrentMenu().groups; if (idx+dir<0 || idx+dir>=g.length) return; [g[idx], g[idx+dir]] = [g[idx+dir], g[idx]]; renderAll(); }
 
 async function uploadFile(type, inp) {
     const f = inp.files[0]; if (!f) return;
     const d = new FormData(); d.append("type", type); d.append("file", f);
     try {
-        await api("/upload", "POST", d);
+        const res = await api("/upload", "POST", d);
         alert("上传成功");
         await loadAssets();
         if(type==='font') initFonts();
+
+        const m = getCurrentMenu();
+        if (type === 'video' && res.filename) {
+             m.bg_video = res.filename;
+        } else if (type === 'background' && res.filename) {
+             m.background = res.filename;
+        }
 
         renderAll();
 
@@ -825,11 +955,11 @@ function deleteWidget() {
 
 function updateMenuMeta(key, val) {
     const m = getCurrentMenu();
-    if(['layout_columns', 'canvas_width', 'canvas_height', 'group_blur_radius', 'item_blur_radius', 'group_bg_alpha', 'item_bg_alpha', 'shadow_offset_x', 'shadow_offset_y', 'shadow_radius'].includes(key)) {
+    if(['layout_columns', 'canvas_width', 'canvas_height', 'group_blur_radius', 'item_blur_radius', 'group_bg_alpha', 'item_bg_alpha', 'shadow_offset_x', 'shadow_offset_y', 'shadow_radius', 'bg_custom_width', 'bg_custom_height', 'video_fps', 'video_frame_ratio'].includes(key)) {
         m[key] = parseInt(val);
     } else if (key === 'use_canvas_size' || key === 'shadow_enabled') {
-        m[key] = val === 'true' || val === true; // 修正bool转换
-    } else if (key === 'export_scale') {
+        m[key] = val === 'true' || val === true;
+    } else if (['export_scale', 'video_start', 'video_end', 'video_scale'].includes(key)) {
         m[key] = parseFloat(val);
     } else {
         m[key] = val;

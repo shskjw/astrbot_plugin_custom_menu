@@ -2,11 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>菜单编辑器 v1.6 </title>
+    <title>菜单编辑器 v1.8.0</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="/static/style.css?v=1.6">
+    <link rel="stylesheet" href="/static/style.css?v=1.8.0">
 </head>
 <body>
 
@@ -15,21 +13,16 @@
         <label>当前编辑菜单</label>
         <div style="display:flex; gap:5px; margin-bottom:5px;">
             <select id="menuSelect" onchange="switchMenu(this.value)" style="flex:1"></select>
-            <!-- 保留原有的新建按钮 -->
             <button class="icon-btn" onclick="createNewMenu()" title="新建空白菜单">+</button>
         </div>
         <div style="display:flex; gap:5px;">
             <input id="menuNameInput" placeholder="名称" oninput="updateMenuMeta('name', this.value)" style="flex:1">
             <button class="icon-btn" id="enableBtn" onclick="toggleEnable()">启用</button>
-
-            <!-- [新增] 复制按钮 -->
             <button class="icon-btn" onclick="duplicateMenu()" title="复制当前模板">📑</button>
-
             <button class="icon-btn" style="color:#f56c6c; border-color:#f56c6c" onclick="deleteMenu()" title="删除">🗑️</button>
         </div>
     </div>
 
-    <!-- === 模式 1: 选中元素的属性面板 === -->
     <div id="propPanel" class="sidebar-content" style="display:none; background:#252526;">
         <div class="sidebar-header" style="background:#2d2d2d; margin-bottom:15px; border-bottom:1px solid #000;">
             <div style="display:flex; justify-content:space-between; align-items:center; width:100%">
@@ -38,24 +31,19 @@
             </div>
             <div id="propDesc" style="font-size:12px; color:#888; margin-top:5px;"></div>
         </div>
-
-        <div id="propContent" style="padding: 0 15px;">
-            <!-- JS 动态生成内容 -->
-        </div>
+        <div id="propContent" style="padding: 0 15px;"></div>
     </div>
 
-    <!-- === 模式 2: 全局设置面板 === -->
     <div id="globalPanel" class="sidebar-content">
         <div class="sidebar-header">
             <h3>🛠️ 全局配置</h3>
             <div style="display:flex; gap:5px;">
-                <button class="btn btn-secondary" onclick="exportImage()">📷</button>
-                <button class="btn btn-primary" onclick="saveAll()">💾</button>
+                <button class="btn btn-secondary" onclick="exportImage()">📷 导出</button>
+                <button class="btn btn-primary" onclick="saveAll()">💾 保存</button>
             </div>
         </div>
 
         <div style="padding:20px;">
-            <!-- 1. 基础设置 -->
             <div class="section">
                 <div class="section-title">画布与布局</div>
                 <div class="form-row">
@@ -70,17 +58,12 @@
                     <div><label>高 (px)</label><input type="number" id="cvsH" oninput="updateMenuMeta('canvas_height', this.value)"></div>
                 </div>
 
-                <!-- 自定义导出倍率 -->
                 <div class="form-row">
-                    <label>🚀 导出倍率 分辨率 (Export Scale)</label>
+                    <label>📺 导出分辨率/画质缩放 (0.1 - 2.0)</label>
                     <div style="display:flex; align-items:center; gap:5px;">
                         <input type="number" step="0.1" min="0.1" id="expScaleInput"
                                oninput="updateMenuMeta('export_scale', this.value)"
                                placeholder="1.0" style="flex:1">
-                    </div>
-                    <div style="font-size:10px; color:#888; margin-top:4px;">
-                        输入自定义倍率 (如 2.5)。<br>
-                        基准 1000px * 2.5 = 导出 2500px 宽度。
                     </div>
                 </div>
 
@@ -97,38 +80,94 @@
                     </select>
                 </div>
                 <div class="form-row"><label>底色</label><div class="color-picker-row"><input type="color" id="cvsColorP" oninput="updateColor('canvas_color', this.value, 'pick')"><input type="text" id="cvsColorT" class="color-value" oninput="updateColor('canvas_color', this.value, 'text')"></div></div>
-                <div class="form-row"><label>背景图</label><div style="display:flex; gap:5px;"><select id="bgSelect" onchange="updateBg(this.value)" style="flex:1"></select><button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button><input type="file" id="bgUp" hidden onchange="uploadFile('background', this)"></div></div>
-                <div class="form-row"><label>背景适应</label><select id="bgFit" onchange="updateMenuMeta('bg_fit_mode', this.value)"><option value="cover_w">宽度填满</option><option value="custom">自定义</option></select></div>
+
+                <div class="form-row">
+                    <label>背景模式</label>
+                    <select id="bgType" onchange="updateMenuMeta('bg_type', this.value); toggleBgPanel();">
+                        <option value="image">🖼️ 静态图片 (PNG)</option>
+                        <option value="video">🎥 动态视频 (APNG/WebP)</option>
+                    </select>
+                </div>
+
+                <div id="panel-bg-image">
+                    <div class="form-row"><label>背景图</label><div style="display:flex; gap:5px;"><select id="bgSelect" onchange="updateBg(this.value)" style="flex:1"></select><button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button><input type="file" id="bgUp" hidden onchange="uploadFile('background', this)"></div></div>
+                    <div class="form-row"><label>背景适应</label><select id="bgFit" onchange="updateMenuMeta('bg_fit_mode', this.value); toggleBgCustomInputs();"><option value="cover_w">宽度填满</option><option value="custom">自定义</option></select></div>
+                    <div id="bg-custom-size-inputs" style="display:none;">
+                        <div class="form-grid-2">
+                            <div><label>自定义宽 (px)</label><input type="number" id="bgCustomW" oninput="updateMenuMeta('bg_custom_width', this.value)"></div>
+                            <div><label>自定义高 (px)</label><input type="number" id="bgCustomH" oninput="updateMenuMeta('bg_custom_height', this.value)"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="panel-bg-video" style="display:none; background:#2b2b2b; padding:10px; border-radius:4px; margin-bottom:10px; border:1px solid #444;">
+                    <div class="form-row">
+                        <label>选择视频素材</label>
+                        <div style="display:flex; gap:5px;">
+                            <select id="vidSelect" onchange="updateMenuMeta('bg_video', this.value); renderCanvas(getCurrentMenu());" style="flex:1"></select>
+                            <button class="btn btn-secondary" onclick="document.getElementById('vidUp').click()">⬆</button>
+                            <input type="file" id="vidUp" hidden accept="video/*" onchange="uploadFile('video', this)">
+                        </div>
+                    </div>
+
+                    <div style="border-top:1px solid #444; margin:10px 0; padding-top:10px;">
+                         <label style="font-size:11px;color:#aaa;margin-bottom:5px;">⏱️ 时间截取 (秒)</label>
+                         <div class="form-grid-2">
+                            <div><label>开始时间</label><input type="number" step="0.1" id="vStart" oninput="updateMenuMeta('video_start', this.value)" placeholder="0.0"></div>
+                            <div><label>结束时间 (0=自动)</label><input type="number" step="0.1" id="vEnd" oninput="updateMenuMeta('video_end', this.value)" placeholder="自动"></div>
+                        </div>
+                    </div>
+
+                    <div style="border-top:1px solid #444; margin:10px 0; padding-top:10px;">
+                         <label style="font-size:11px;color:#aaa;margin-bottom:5px;">🎞️ 抽帧与画面</label>
+                         <div style="display:flex; gap:10px; margin-bottom:8px;">
+                             <label style="font-size:12px;cursor:pointer"><input type="radio" name="vFpsMode" value="fixed" onclick="updateMenuMeta('video_fps_mode', 'fixed'); toggleVideoInputs();"> 指定FPS</label>
+                             <label style="font-size:12px;cursor:pointer"><input type="radio" name="vFpsMode" value="ratio" onclick="updateMenuMeta('video_fps_mode', 'ratio'); toggleVideoInputs();"> 按比例抽帧</label>
+                         </div>
+                         <div class="form-grid-2">
+                             <div id="grp-vFps"><label>目标FPS (例:10)</label><input type="number" id="vFps" oninput="updateMenuMeta('video_fps', this.value)" placeholder="10"></div>
+                             <div id="grp-vRatio" style="display:none"><label>抽帧比率 (例:3=1/3)</label><input type="number" id="vRatio" oninput="updateMenuMeta('video_frame_ratio', this.value)" placeholder="1"></div>
+                             <div><label>视频内容缩放 (0.1-2.0)</label><input type="number" step="0.1" id="vScale" oninput="updateMenuMeta('video_scale', this.value)" placeholder="1.0"></div>
+                         </div>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div>
+                            <label>对齐方式</label>
+                            <select id="vAlign" onchange="updateMenuMeta('video_align', this.value); renderCanvas(getCurrentMenu());">
+                                <option value="center">居中</option>
+                                <option value="top">顶部</option>
+                                <option value="bottom">底部</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>导出格式</label>
+                            <select id="vFormat" onchange="updateMenuMeta('video_export_format', this.value)">
+                                <option value="apng">APNG (推荐)</option>
+                                <option value="webp">WebP</option>
+                                <option value="gif">GIF</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- 5. 阴影设置 -->
             <div class="section">
-                <div class="section-title">
-                    文本阴影 (Shadow)
-                    <input type="checkbox" id="shadowEn" onclick="updateMenuMeta('shadow_enabled', this.checked)">
-                </div>
-                <div class="form-row">
-                   <label>阴影颜色</label>
-                   <div class="color-picker-row"><input type="color" id="shadowColP" oninput="updateColor('shadow_color', this.value, 'pick')"><input type="text" id="shadowColT" class="color-value" oninput="updateColor('shadow_color', this.value, 'text')"></div>
-                </div>
+                <div class="section-title">文本阴影 (Shadow) <input type="checkbox" id="shadowEn" onclick="updateMenuMeta('shadow_enabled', this.checked)"></div>
+                <div class="form-row"><label>阴影颜色</label><div class="color-picker-row"><input type="color" id="shadowColP" oninput="updateColor('shadow_color', this.value, 'pick')"><input type="text" id="shadowColT" class="color-value" oninput="updateColor('shadow_color', this.value, 'text')"></div></div>
                 <div class="form-grid-2">
                     <div><label>偏移 X</label><input type="number" id="shadowX" oninput="updateMenuMeta('shadow_offset_x', this.value)"></div>
                     <div><label>偏移 Y</label><input type="number" id="shadowY" oninput="updateMenuMeta('shadow_offset_y', this.value)"></div>
                 </div>
-                <div class="form-row">
-                    <label>模糊半径 (Feather)</label>
-                    <input type="range" min="0" max="20" id="shadowR" oninput="updateMenuMeta('shadow_radius', this.value)">
-                </div>
+                <div class="form-row"><label>模糊半径</label><input type="range" min="0" max="20" id="shadowR" oninput="updateMenuMeta('shadow_radius', this.value)"></div>
             </div>
 
-            <!-- 2. 分组样式 -->
             <div class="section">
                 <div class="section-title">默认样式设置</div>
                 <div class="form-row"><label>1️⃣ 分组背景 (大框)</label><div class="form-grid-2"><input type="color" id="boxColor" oninput="updateMenuMeta('group_bg_color', this.value)"><input type="number" id="boxBlur" oninput="updateMenuMeta('group_blur_radius', this.value)" placeholder="模糊"></div><input type="range" min="0" max="255" id="boxAlpha" oninput="updateMenuMeta('group_bg_alpha', this.value); document.getElementById('alphaVal').innerText=this.value"><span id="alphaVal" style="float:right;font-size:10px">50</span></div>
                 <div class="form-row"><label>2️⃣ 功能项背景 (小框)</label><div class="form-grid-2"><input type="color" id="iboxColor" oninput="updateMenuMeta('item_bg_color', this.value)"><input type="number" id="iboxBlur" oninput="updateMenuMeta('item_blur_radius', this.value)" placeholder="模糊"></div><input type="range" min="0" max="255" id="iboxAlpha" oninput="updateMenuMeta('item_bg_alpha', this.value); document.getElementById('ialphaVal').innerText=this.value"><span id="ialphaVal" style="float:right;font-size:10px">20</span></div>
             </div>
 
-            <!-- 配色 -->
             <div class="section">
                 <div class="section-title">全局配色 (默认值)</div>
                 <div class="form-row"><label>🎨 主标题颜色</label><div class="color-picker-row"><input type="color" id="cTitleP" oninput="updateColor('title_color', this.value, 'pick')"><input type="text" id="cTitleT" class="color-value" oninput="updateColor('title_color', this.value, 'text')"></div></div>
@@ -139,7 +178,6 @@
                 <div class="form-row"><label>🎨 描述文字颜色</label><div class="color-picker-row"><input type="color" id="cItemDescP" oninput="updateColor('item_desc_color', this.value, 'pick')"><input type="text" id="cItemDescT" class="color-value" oninput="updateColor('item_desc_color', this.value, 'text')"></div></div>
             </div>
 
-            <!-- 字体 -->
             <div class="section">
                 <div class="section-title">全局字体 (默认值)</div>
                 <div class="form-row"><label>主/副标题字体</label><select id="fTitle" onchange="updateMenuMeta('title_font', this.value)"></select></div>
@@ -151,13 +189,11 @@
                 <input type="file" id="fontUp" hidden accept=".ttf,.otf" onchange="uploadFile('font', this)">
             </div>
 
-            <!-- 分组列表 -->
             <div class="section">
                 <div class="section-title">分组管理 <button class="icon-btn" onclick="addGroup()">+</button></div>
                 <div id="groupList"></div>
             </div>
 
-            <!-- 组件 -->
             <div class="section">
                 <div class="section-title">装饰组件 <button class="icon-btn" onclick="addWidget('text')">+T</button> <button class="icon-btn" onclick="addWidget('image')">+I</button></div>
                 <div id="widgetEditor" style="display:none; background:#333; padding:10px; border-radius:4px; margin-top:5px;">
@@ -185,10 +221,11 @@
 
 <div class="workspace">
     <div id="canvas-wrapper" class="canvas-wrapper">
-        <div id="canvas" class="canvas"></div>
+        <video id="canvas-video-preview" loop autoplay muted playsinline style="position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 0;"></video>
+        <div id="canvas" class="canvas" style="position: relative; z-index: 1;"></div>
     </div>
 </div>
 
-<script src="/static/editor.js?v=1.6"></script>
+<script src="/static/editor.js?v=1.8.0"></script>
 </body>
 </html>

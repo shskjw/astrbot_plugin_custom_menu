@@ -12,9 +12,18 @@
 版本报错请手动更新   
 pip install -U pillow              
 pip show pillow
+
+## 依赖安装
+```text
+pip install Pillow imageio imageio-ffmpeg
+```
+
+
 ## 效果展示
 
 展示网站 [效果展示，演示网站]( http://124.156.214.104:9876/) 密码：astrbot123
+
+
 
 **示例:** `菜单展示`
 
@@ -36,6 +45,11 @@ pip show pillow
 | <img src="./zhaopian/3.png" width="400"> |
 |:----------------------------------------:|
 |                 *菜单功能展示*                 |
+**示例:** `动态壁纸演示`
+
+| <img src="./zhaopian/4.png" width="400"> |
+|:----------------------------------------:|
+|           *动态壁纸展示具体可以上演示网站查看*            |
 ---
 ## ✨ 核心特性
 

@@ -1,5 +1,8 @@
 # 测试版本有问题lssues 不咋会写md 可能有漏 请上演示测试
-下个版本预告 支持自动填充模板
+**示例:** `懒人专属模板导入`
+
+| <img src="./zhaopian/5.png" width="400"> |
+|:----------------------------------------:|
 # 🎨 可视化菜单编辑器
 > **架构**: Multiprocessing (Spawn) + Quart + Pillow  
 > **适配**: AstrBot (Star 协议)

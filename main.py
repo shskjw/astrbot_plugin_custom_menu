@@ -4,13 +4,24 @@ import json
 import multiprocessing
 import traceback
 import re
+import os  # 新增引用
+import collections
 from pathlib import Path
 import threading
+from typing import Dict, List, Optional
 
 from astrbot.api.star import Context, Star, register
 from astrbot.api import event
 from astrbot.api.event import filter
 from astrbot.api import logger
+from astrbot.api.message_components import File, Plain  # 新增引用：用于发送文件和纯文本
+
+# --- 自动填充功能需要的引用 ---
+from astrbot.core.star.star_handler import star_handlers_registry, StarHandlerMetadata
+from astrbot.core.star.filter.command import CommandFilter
+from astrbot.core.star.filter.command_group import CommandGroupFilter
+
+# ---------------------------
 
 try:
     from . import storage
@@ -33,7 +44,7 @@ def _get_local_ip_sync():
 async def get_local_ip(): return await asyncio.to_thread(_get_local_ip_sync)
 
 
-@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.7.0")
+@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.7.5")
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -92,12 +103,79 @@ class CustomMenuPlugin(Star):
             except:
                 continue
 
+    # --- 获取 AstrBot 指令数据 (自动填充功能) ---
+    def get_astrbot_commands(self) -> Dict[str, List[Dict[str, str]]]:
+        """获取所有插件及其命令列表, 返回结构化数据"""
+        plugin_commands = collections.defaultdict(list)
+        try:
+            all_stars_metadata = self.context.get_all_stars()
+            all_stars_metadata = [star for star in all_stars_metadata if star.activated]
+        except Exception as e:
+            logger.error(f"获取插件列表失败: {e}")
+            return {}
+
+        if not all_stars_metadata: return {}
+
+        for star in all_stars_metadata:
+            plugin_name = getattr(star, "name", "未知插件")
+            if plugin_name == "astrbot_plugin_custom_menu": continue
+
+            plugin_instance = getattr(star, "star_cls", None)
+            module_path = getattr(star, "module_path", None)
+
+            if not plugin_name or not module_path: continue
+
+            for handler in star_handlers_registry:
+                if not isinstance(handler, StarHandlerMetadata): continue
+                if handler.handler_module_path != module_path: continue
+
+                command_name: Optional[str] = None
+                description: Optional[str] = handler.desc
+
+                for filter_ in handler.event_filters:
+                    if isinstance(filter_, CommandFilter):
+                        command_name = filter_.command_name
+                        break
+                    elif isinstance(filter_, CommandGroupFilter):
+                        command_name = filter_.group_name
+                        break
+
+                if command_name:
+                    item = {"cmd": command_name, "desc": description or ""}
+                    if item not in plugin_commands[plugin_name]:
+                        plugin_commands[plugin_name].append(item)
+
+        return dict(plugin_commands)
+
+    def _yield_smart_result(self, event_obj, path_str: str):
+        """
+        如果文件 <= 15MB，发送图片。
+        如果文件 > 15MB，发送文件。
+        """
+        try:
+            size_bytes = os.path.getsize(path_str)
+            size_mb = size_bytes / (1024 * 1024)
+            path_obj = Path(path_str)
+
+            if size_mb > 15:
+                logger.info(f"文件体积 ({size_mb:.2f}MB) 超过15MB，转为文件发送")
+                return event_obj.chain_result([
+                    File(file=str(path_obj), name=path_obj.name),
+                    Plain(f" ⚠️ 菜单文件较大({size_mb:.1f}MB)，已转为文件形式发送。")
+                ])
+            else:
+                return event_obj.image_result(str(path_obj))
+        except Exception as e:
+            logger.error(f"检查文件大小时出错: {e}")
+            return event_obj.image_result(path_str)
+
     async def _generate_menu_chain(self, event_obj):
         if self._init_task and not self._init_task.done():
             try:
                 await asyncio.wait_for(self._init_task, timeout=5.0)
             except:
-                yield event_obj.plain_result("⚠️ 插件初始化超时"); return
+                yield event_obj.plain_result("⚠️ 插件初始化超时");
+                return
         if not self.has_deps: yield event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}"); return
 
         try:
@@ -119,9 +197,11 @@ class CustomMenuPlugin(Star):
                 cache_path = storage.plugin_storage.get_menu_output_cache_path(menu_id, is_video_mode,
                                                                                output_format_key)
 
+                # --- 1. 缓存命中情况 ---
                 if cache_path.exists():
                     logger.info(f"✅ 从缓存发送: {menu_data.get('name')}")
-                    yield event_obj.image_result(str(cache_path))
+                    # 使用智能发送逻辑
+                    yield self._yield_smart_result(event_obj, str(cache_path))
                     continue
 
                 logger.info(f"渲染菜单: {menu_data.get('name')} (模式: {'动画' if is_video_mode else '静态'})")
@@ -130,13 +210,15 @@ class CustomMenuPlugin(Star):
                     if is_video_mode:
                         result_path = await asyncio.to_thread(render_animated, menu_data, cache_path)
                         if result_path and result_path.exists():
-                            yield event_obj.image_result(str(result_path))
+                            # --- 2. 动态渲染完成情况 ---
+                            yield self._yield_smart_result(event_obj, str(result_path))
                         else:
                             yield event_obj.plain_result(f"❌ 动态菜单 {menu_data.get('name')} 渲染失败，请检查视频源。")
                     else:
                         img = await asyncio.to_thread(render_static, menu_data)
-                        await asyncio.to_thread(img.save, cache_path)  # Save as PNG (Supports Transparency)
-                        yield event_obj.image_result(str(cache_path))
+                        await asyncio.to_thread(img.save, cache_path)
+                        # --- 3. 静态渲染完成情况 ---
+                        yield self._yield_smart_result(event_obj, str(cache_path))
 
                 except Exception as e:
                     logger.error(f"渲染失败: {traceback.format_exc()}")
@@ -165,11 +247,15 @@ class CustomMenuPlugin(Star):
 
         yield event.plain_result("🚀 正在启动后台...")
 
+        # 获取指令数据 (自动填充)
+        command_data = self.get_astrbot_commands()
+
         try:
             from .web_server import run_server
             if not storage.plugin_storage.data_dir: storage.plugin_storage.init_paths()
             self.web_process = ctx.Process(target=run_server, args=(dict(self.cfg), status_q, self.log_queue,
-                                                                    str(storage.plugin_storage.data_dir)), daemon=True)
+                                                                    str(storage.plugin_storage.data_dir), command_data),
+                                           daemon=True)
             self.web_process.start()
             self._log_consumer_task = threading.Thread(target=self._consume_logs, daemon=True)
             self._log_consumer_task.start()

@@ -14,6 +14,8 @@
         <div style="display:flex; gap:5px; margin-bottom:5px;">
             <select id="menuSelect" onchange="switchMenu(this.value)" style="flex:1"></select>
             <button class="icon-btn" onclick="createNewMenu()" title="新建空白菜单">+</button>
+            <!-- 新增按钮 -->
+            <button class="icon-btn" onclick="openAutoFillModal()" title="自动填充指令" style="color: #64b5f6;">⚡</button>
         </div>
         <div style="display:flex; gap:5px;">
             <input id="menuNameInput" placeholder="名称" oninput="updateMenuMeta('name', this.value)" style="flex:1">
@@ -54,7 +56,7 @@
                     </select>
                 </div>
                 <div class="form-grid-2">
-                    <div><label>宽 (只能1000)</label><input type="number" id="cvsW" oninput="updateMenuMeta('canvas_width', this.value)"></div>
+                    <div><label>宽 (看大小推荐1000)</label><input type="number" id="cvsW" oninput="updateMenuMeta('canvas_width', this.value)"></div>
                     <div><label>高 (px)</label><input type="number" id="cvsH" oninput="updateMenuMeta('canvas_height', this.value)"></div>
                 </div>
 
@@ -223,6 +225,23 @@
     <div id="canvas-wrapper" class="canvas-wrapper">
         <video id="canvas-video-preview" loop autoplay muted playsinline style="position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 0;"></video>
         <div id="canvas" class="canvas" style="position: relative; z-index: 1;"></div>
+    </div>
+</div>
+
+<!-- 新增弹窗 HTML -->
+<div id="autoFillModal" class="modal-overlay">
+    <div class="modal" style="width: 500px;">
+        <h3>⚡ 自动填充指令</h3>
+        <p style="color:#aaa; font-size:12px; margin-bottom:15px;">从已安装的 AstrBot 插件中选择指令导入到当前菜单。</p>
+
+        <div id="pluginList" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #444; padding: 10px; border-radius: 4px;">
+            <div style="text-align:center; color:#888;">正在加载指令...</div>
+        </div>
+
+        <div style="display:flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" onclick="document.getElementById('autoFillModal').style.display='none'">取消</button>
+            <button class="btn btn-primary" onclick="confirmAutoFill()">导入选中项</button>
+        </div>
     </div>
 </div>
 

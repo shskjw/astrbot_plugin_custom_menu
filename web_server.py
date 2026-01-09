@@ -36,7 +36,8 @@ def mock_astrbot_modules(queue):
         sys.modules["astrbot.api.star"] = m_star
 
 
-def run_server(config_dict, status_queue, log_queue, data_dir=None):
+# --- 修改函数签名，增加 command_data 参数 ---
+def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data=None):
     mock_astrbot_modules(log_queue)
     try:
         from quart import Quart, request, render_template, redirect, url_for, session, jsonify, send_from_directory, \
@@ -75,6 +76,12 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None):
         @app.route("/")
         async def index():
             return await render_template("index.html")
+
+        # --- 新增 API：获取指令数据 ---
+        @app.route("/api/commands", methods=["GET"])
+        async def get_commands_data():
+            # command_data 是在进程启动时传入的字典
+            return jsonify(command_data or {})
 
         @app.route("/api/config", methods=["GET"])
         async def get_cfg():

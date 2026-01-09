@@ -2,7 +2,9 @@ const appState = {
     fullConfig: { menus: [] },
     currentMenuId: null,
     assets: { backgrounds: [], icons: [], widget_imgs: [], fonts: [], videos: [] },
-    clipboard: null
+    clipboard: null,
+    // 新增：缓存指令数据
+    commandsData: null
 };
 
 // 拖拽核心状态
@@ -976,3 +978,158 @@ function initFonts() { (appState.assets.fonts || []).forEach(n => { const id="f-
 function cssFont(n) { return n ? n.replace(/[^a-zA-Z0-9_]/g, '_') : 'sans-serif'; }
 
 const get_style = getStyle;
+
+// --- 新增：自动填充逻辑 ---
+async function openAutoFillModal() {
+    const modal = document.getElementById('autoFillModal');
+    const listEl = document.getElementById('pluginList');
+    modal.style.display = 'flex';
+    listEl.innerHTML = '<div style="text-align:center; color:#888;">正在加载指令...</div>';
+
+    try {
+        if (!appState.commandsData) {
+            appState.commandsData = await api("/commands");
+        }
+        renderAutoFillList(appState.commandsData);
+    } catch (e) {
+        listEl.innerHTML = `<div style="text-align:center; color:#f56c6c;">加载失败: ${e}</div>`;
+    }
+}
+
+function renderAutoFillList(data) {
+    const listEl = document.getElementById('pluginList');
+    listEl.innerHTML = '';
+
+    if (Object.keys(data).length === 0) {
+        listEl.innerHTML = '<div style="text-align:center; color:#888;">没有找到可用的插件指令数据。</div>';
+        return;
+    }
+
+    // 排序插件名
+    const sortedPlugins = Object.keys(data).sort();
+
+    sortedPlugins.forEach(pluginName => {
+        const cmds = data[pluginName];
+        if (!cmds || cmds.length === 0) return;
+
+        const groupDiv = document.createElement('div');
+        groupDiv.style.marginBottom = '10px';
+
+        // 插件标题 + 全选框
+        const header = document.createElement('div');
+        header.style.background = '#333';
+        header.style.padding = '5px 10px';
+        header.style.borderRadius = '4px';
+        header.style.marginBottom = '5px';
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+
+        const pCheck = document.createElement('input');
+        pCheck.type = 'checkbox';
+        pCheck.id = `chk-plugin-${pluginName}`;
+        pCheck.style.width = '16px'; pCheck.style.height = '16px'; pCheck.style.marginRight = '8px';
+        pCheck.onclick = (e) => {
+            const children = document.querySelectorAll(`.chk-item-${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}`);
+            children.forEach(c => c.checked = e.target.checked);
+        };
+
+        const label = document.createElement('label');
+        label.innerText = pluginName;
+        label.htmlFor = `chk-plugin-${pluginName}`;
+        label.style.fontWeight = 'bold';
+        label.style.cursor = 'pointer';
+
+        header.appendChild(pCheck);
+        header.appendChild(label);
+        groupDiv.appendChild(header);
+
+        // 指令列表
+        const cmdsDiv = document.createElement('div');
+        cmdsDiv.style.paddingLeft = '20px';
+        cmdsDiv.style.display = 'grid';
+        cmdsDiv.style.gridTemplateColumns = '1fr 1fr';
+        cmdsDiv.style.gap = '5px';
+
+        const safePName = pluginName.replace(/[^a-zA-Z0-9]/g, '_');
+
+        cmds.forEach((cmdObj, idx) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.style.display = 'flex';
+            itemDiv.style.alignItems = 'center';
+
+            const iCheck = document.createElement('input');
+            iCheck.type = 'checkbox';
+            iCheck.className = `chk-item-${safePName}`;
+            iCheck.value = JSON.stringify({p: pluginName, c: cmdObj});
+            iCheck.style.width = '14px'; iCheck.style.height = '14px'; iCheck.style.marginRight = '5px';
+
+            const iLabel = document.createElement('span');
+            iLabel.innerText = cmdObj.cmd;
+            iLabel.title = cmdObj.desc || '';
+            iLabel.style.fontSize = '12px';
+            iLabel.style.color = '#ccc';
+
+            itemDiv.appendChild(iCheck);
+            itemDiv.appendChild(iLabel);
+            cmdsDiv.appendChild(itemDiv);
+        });
+
+        groupDiv.appendChild(cmdsDiv);
+        listEl.appendChild(groupDiv);
+    });
+}
+
+function confirmAutoFill() {
+    const listEl = document.getElementById('pluginList');
+    const checks = listEl.querySelectorAll('input[type="checkbox"]:checked');
+    const selectedData = [];
+
+    checks.forEach(chk => {
+        if (chk.value) { // 排除插件标题的全选框 (没有 value)
+            try {
+                selectedData.push(JSON.parse(chk.value));
+            } catch(e){}
+        }
+    });
+
+    if (selectedData.length === 0) {
+        alert("请先选择要导入的指令！");
+        return;
+    }
+
+    // 按插件分组整理数据
+    const grouped = {};
+    selectedData.forEach(item => {
+        if (!grouped[item.p]) grouped[item.p] = [];
+        grouped[item.p].push(item.c);
+    });
+
+    const m = getCurrentMenu();
+    let addedCount = 0;
+
+    // 为每个插件创建一个新分组
+    for (const [pluginName, cmds] of Object.entries(grouped)) {
+        const newGroup = {
+            title: pluginName,
+            subtitle: "Plugin Commands",
+            items: [],
+            free_mode: false // 自动填充默认使用 Grid 模式
+        };
+
+        cmds.forEach(c => {
+            newGroup.items.push({
+                name: c.cmd,
+                desc: c.desc || "...",
+                icon: "",
+                x: 0, y: 0, w: 200, h: 80 // Grid 模式下 xy 无效，但给个默认值
+            });
+            addedCount++;
+        });
+
+        m.groups.push(newGroup);
+    }
+
+    document.getElementById('autoFillModal').style.display='none';
+    renderAll();
+    alert(`✅ 已成功导入 ${addedCount} 个指令到新分组！`);
+}

@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>菜单编辑器 v1.8.0</title>
+    <title>菜单编辑器 v1.8.2</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link rel="stylesheet" href="/static/style.css?v=1.8.0">
+    <link rel="stylesheet" href="/static/style.css?v=1.8.2">
 </head>
 <body>
 
@@ -14,7 +14,6 @@
         <div style="display:flex; gap:5px; margin-bottom:5px;">
             <select id="menuSelect" onchange="switchMenu(this.value)" style="flex:1"></select>
             <button class="icon-btn" onclick="createNewMenu()" title="新建空白菜单">+</button>
-            <!-- 新增按钮 -->
             <button class="icon-btn" onclick="openAutoFillModal()" title="自动填充指令" style="color: #64b5f6;">⚡</button>
         </div>
         <div style="display:flex; gap:5px;">
@@ -56,12 +55,12 @@
                     </select>
                 </div>
                 <div class="form-grid-2">
-                    <div><label>宽 (看大小推荐1000)</label><input type="number" id="cvsW" oninput="updateMenuMeta('canvas_width', this.value)"></div>
+                    <div><label>宽 (只能1000)</label><input type="number" id="cvsW" oninput="updateMenuMeta('canvas_width', this.value)"></div>
                     <div><label>高 (px)</label><input type="number" id="cvsH" oninput="updateMenuMeta('canvas_height', this.value)"></div>
                 </div>
 
                 <div class="form-row">
-                    <label>📺 导出分辨率/画质缩放 (0.1 - 2.0)</label>
+                    <label>📺 导出分辨率 (0.1 - 2.0)</label>
                     <div style="display:flex; align-items:center; gap:5px;">
                         <input type="number" step="0.1" min="0.1" id="expScaleInput"
                                oninput="updateMenuMeta('export_scale', this.value)"
@@ -73,15 +72,10 @@
                     <label>默认每行列数 (Grid模式)</label>
                     <input type="number" id="columnInput" oninput="updateMenuMeta('layout_columns', this.value)" placeholder="默认为 3">
                 </div>
-                <div class="form-row">
-                    <label>标题对齐方式</label>
-                    <select id="alignSelect" onchange="updateMenuMeta('title_align', this.value)">
-                        <option value="left">居左 (Left)</option>
-                        <option value="center">居中 (Center)</option>
-                        <option value="right">居右 (Right)</option>
-                    </select>
-                </div>
                 <div class="form-row"><label>底色</label><div class="color-picker-row"><input type="color" id="cvsColorP" oninput="updateColor('canvas_color', this.value, 'pick')"><input type="text" id="cvsColorT" class="color-value" oninput="updateColor('canvas_color', this.value, 'text')"></div></div>
+
+                <!-- 背景设置区域 -->
+                <div class="section-title" style="margin-top:20px;">背景设置</div>
 
                 <div class="form-row">
                     <label>背景模式</label>
@@ -91,20 +85,74 @@
                     </select>
                 </div>
 
-                <div id="panel-bg-image">
-                    <div class="form-row"><label>背景图</label><div style="display:flex; gap:5px;"><select id="bgSelect" onchange="updateBg(this.value)" style="flex:1"></select><button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button><input type="file" id="bgUp" hidden onchange="uploadFile('background', this)"></div></div>
-                    <div class="form-row"><label>背景适应</label><select id="bgFit" onchange="updateMenuMeta('bg_fit_mode', this.value); toggleBgCustomInputs();"><option value="cover_w">宽度填满</option><option value="custom">自定义</option></select></div>
-                    <div id="bg-custom-size-inputs" style="display:none;">
-                        <div class="form-grid-2">
-                            <div><label>自定义宽 (px)</label><input type="number" id="bgCustomW" oninput="updateMenuMeta('bg_custom_width', this.value)"></div>
-                            <div><label>自定义高 (px)</label><input type="number" id="bgCustomH" oninput="updateMenuMeta('bg_custom_height', this.value)"></div>
+                <!-- 通用背景布局控制 (新增) -->
+                <div style="background:#2b2b2b; padding:10px; border-radius:4px; margin-bottom:15px; border:1px solid #444;">
+                    <label style="color:#888;font-size:11px;margin-bottom:8px;display:block;text-transform:uppercase;">📐 布局与对齐 (通用)</label>
+
+                    <div class="form-row">
+                        <label>适应模式</label>
+                        <select id="bgFit" onchange="updateMenuMeta('bg_fit_mode', this.value); toggleBgCustomInputs();">
+                            <option value="cover">✨ 智能填满 (Cover)</option>
+                            <option value="cover_w">↔️ 宽度填满 (Cover Width)</option>
+                            <option value="cover_h">↕️ 高度填满 (Cover Height)</option>
+                            <option value="contain">🔲 完整显示 (Contain)</option>
+                            <option value="custom">🛠 自定义尺寸</option>
+                        </select>
+                    </div>
+
+                    <div id="bg-custom-size-inputs" style="display:none; margin-bottom:10px; background:#222; padding:5px; border-radius:4px;">
+                        <div class="form-grid-2" style="margin-bottom:0">
+                            <div><label>强制宽(px)</label><input type="number" id="bgCustomW" oninput="updateMenuMeta('bg_custom_width', this.value)"></div>
+                            <div><label>强制高(px)</label><input type="number" id="bgCustomH" oninput="updateMenuMeta('bg_custom_height', this.value)"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div>
+                            <label>水平对齐 (X)</label>
+                            <select id="bgAlignX" onchange="updateUnifiedBgParams('align_x', this.value)">
+                                <option value="center">居中 (Center)</option>
+                                <option value="left">居左 (Left)</option>
+                                <option value="right">居右 (Right)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>垂直对齐 (Y)</label>
+                            <select id="bgAlignY" onchange="updateUnifiedBgParams('align_y', this.value)">
+                                <option value="center">居中 (Center)</option>
+                                <option value="top">顶部 (Top)</option>
+                                <option value="bottom">底部 (Bottom)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-bottom:0;">
+                        <label>🔍 背景缩放 (Zoom) <span id="bgScaleVal" style="float:right;color:#aaa;font-family:monospace">1.0</span></label>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <input type="range" min="0.1" max="3.0" step="0.1" id="bgScaleRange"
+                                   oninput="updateUnifiedBgParams('scale', this.value)" style="flex:1">
+                            <input type="number" step="0.1" id="bgScaleInput"
+                                   oninput="updateUnifiedBgParams('scale', this.value)" style="width:50px; text-align:center;">
                         </div>
                     </div>
                 </div>
 
-                <div id="panel-bg-video" style="display:none; background:#2b2b2b; padding:10px; border-radius:4px; margin-bottom:10px; border:1px solid #444;">
+                <!-- 图片专用面板 -->
+                <div id="panel-bg-image">
                     <div class="form-row">
-                        <label>选择视频素材</label>
+                        <label>选择图片</label>
+                        <div style="display:flex; gap:5px;">
+                            <select id="bgSelect" onchange="updateBg(this.value)" style="flex:1"></select>
+                            <button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button>
+                            <input type="file" id="bgUp" hidden onchange="uploadFile('background', this)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 视频专用面板 -->
+                <div id="panel-bg-video" style="display:none;">
+                    <div class="form-row">
+                        <label>选择视频</label>
                         <div style="display:flex; gap:5px;">
                             <select id="vidSelect" onchange="updateMenuMeta('bg_video', this.value); renderCanvas(getCurrentMenu());" style="flex:1"></select>
                             <button class="btn btn-secondary" onclick="document.getElementById('vidUp').click()">⬆</button>
@@ -115,39 +163,22 @@
                     <div style="border-top:1px solid #444; margin:10px 0; padding-top:10px;">
                          <label style="font-size:11px;color:#aaa;margin-bottom:5px;">⏱️ 时间截取 (秒)</label>
                          <div class="form-grid-2">
-                            <div><label>开始时间</label><input type="number" step="0.1" id="vStart" oninput="updateMenuMeta('video_start', this.value)" placeholder="0.0"></div>
-                            <div><label>结束时间 (0=自动)</label><input type="number" step="0.1" id="vEnd" oninput="updateMenuMeta('video_end', this.value)" placeholder="自动(建议15s）"></div>
+                            <div><label>开始</label><input type="number" step="0.1" id="vStart" oninput="updateMenuMeta('video_start', this.value)" placeholder="0.0"></div>
+                            <div><label>结束 (0=自动)</label><input type="number" step="0.1" id="vEnd" oninput="updateMenuMeta('video_end', this.value)" placeholder="10.0"></div>
                         </div>
-                    </div>
-
-                    <div style="border-top:1px solid #444; margin:10px 0; padding-top:10px;">
-                         <label style="font-size:11px;color:#aaa;margin-bottom:5px;">🎞️ 抽帧与画面</label>
-                         <div style="display:flex; gap:10px; margin-bottom:8px;">
-                             <label style="font-size:12px;cursor:pointer"><input type="radio" name="vFpsMode" value="fixed" onclick="updateMenuMeta('video_fps_mode', 'fixed'); toggleVideoInputs();"> 指定FPS</label>
-                             <label style="font-size:12px;cursor:pointer"><input type="radio" name="vFpsMode" value="ratio" onclick="updateMenuMeta('video_fps_mode', 'ratio'); toggleVideoInputs();"> 按比例抽帧</label>
-                         </div>
-                         <div class="form-grid-2">
-                             <div id="grp-vFps"><label>目标FPS (例:10)</label><input type="number" id="vFps" oninput="updateMenuMeta('video_fps', this.value)" placeholder="10"></div>
-                             <div id="grp-vRatio" style="display:none"><label>抽帧比率 (例:3=1/3)</label><input type="number" id="vRatio" oninput="updateMenuMeta('video_frame_ratio', this.value)" placeholder="1"></div>
-                             <div><label>视频大小缩放(0.1-2.0)</label><input type="number" step="0.1" id="vScale" oninput="updateMenuMeta('video_scale', this.value)" placeholder="1.0"></div>
-                         </div>
                     </div>
 
                     <div class="form-grid-2">
                         <div>
-                            <label>对齐方式</label>
-                            <select id="vAlign" onchange="updateMenuMeta('video_align', this.value); renderCanvas(getCurrentMenu());">
-                                <option value="center">居中</option>
-                                <option value="top">顶部</option>
-                                <option value="bottom">底部</option>
-                            </select>
+                            <label>FPS (建议10-12)</label>
+                            <input type="number" id="vFps" oninput="updateMenuMeta('video_fps', this.value)" placeholder="10">
                         </div>
                         <div>
                             <label>导出格式</label>
                             <select id="vFormat" onchange="updateMenuMeta('video_export_format', this.value)">
-                                <option value="apng">APNG (推荐)</option>
                                 <option value="webp">WebP (推荐)</option>
-                                <option value="gif">GIF (纯属一乐)</option>
+                                <option value="apng">APNG (高清)</option>
+                                <option value="gif">GIF (较差)</option>
                             </select>
                         </div>
                     </div>
@@ -223,21 +254,23 @@
 
 <div class="workspace">
     <div id="canvas-wrapper" class="canvas-wrapper">
-        <video id="canvas-video-preview" loop autoplay muted playsinline style="position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 0;"></video>
+        <!-- 背景预览层 -->
+        <div id="bg-preview-layer" style="position: absolute; width: 100%; height: 100%; z-index: 0; overflow: hidden;">
+            <video id="canvas-video-preview" loop autoplay muted playsinline style="display:none;"></video>
+            <div id="canvas-img-preview" style="display:none; width:100%; height:100%;"></div>
+        </div>
         <div id="canvas" class="canvas" style="position: relative; z-index: 1;"></div>
     </div>
 </div>
 
-<!-- 新增弹窗 HTML -->
+<!-- 自动填充弹窗 -->
 <div id="autoFillModal" class="modal-overlay">
     <div class="modal" style="width: 500px;">
         <h3>⚡ 自动填充指令</h3>
         <p style="color:#aaa; font-size:12px; margin-bottom:15px;">从已安装的 AstrBot 插件中选择指令导入到当前菜单。</p>
-
         <div id="pluginList" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #444; padding: 10px; border-radius: 4px;">
             <div style="text-align:center; color:#888;">正在加载指令...</div>
         </div>
-
         <div style="display:flex; justify-content: flex-end; gap: 10px;">
             <button class="btn btn-secondary" onclick="document.getElementById('autoFillModal').style.display='none'">取消</button>
             <button class="btn btn-primary" onclick="confirmAutoFill()">导入选中项</button>
@@ -245,6 +278,6 @@
     </div>
 </div>
 
-<script src="/static/editor.js?v=1.8.0"></script>
+<script src="/static/editor.js?v=1.8.2"></script>
 </body>
 </html>

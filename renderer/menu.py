@@ -3,7 +3,7 @@ import imageio
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 try:
     from astrbot.api import logger
@@ -147,6 +147,76 @@ def get_style(obj: dict, menu: dict, key: str, fallback_key: str, default=None):
 
 
 # ==================================================================================
+# SHARED: Universal Background Layout Calculator
+# ==================================================================================
+def _calculate_bg_layout(src_w: int, src_h: int, canvas_w: int, canvas_h: int,
+                         fit_mode: str, scale: float, align_x: str, align_y: str,
+                         custom_w: int = 0, custom_h: int = 0) -> Tuple[int, int, int, int]:
+    """
+    统一计算背景图的尺寸和位置
+    """
+    # 1. 计算基础尺寸 (Base Size)
+    base_w, base_h = src_w, src_h
+
+    # 强转字符串并清理，防止 None 或 case 问题
+    ax = str(align_x or "center").lower().strip()
+    ay = str(align_y or "center").lower().strip()
+
+    if fit_mode == "custom" and custom_w > 0 and custom_h > 0:
+        base_w, base_h = custom_w, custom_h
+    else:
+        src_ratio = src_w / src_h if src_h > 0 else 1
+        canvas_ratio = canvas_w / canvas_h if canvas_h > 0 else 1
+
+        if fit_mode == "contain":
+            if src_ratio > canvas_ratio:  # 图片更宽，定宽补高
+                base_w = canvas_w
+                base_h = int(canvas_w / src_ratio)
+            else:  # 图片更高，定高补宽
+                base_h = canvas_h
+                base_w = int(canvas_h * src_ratio)
+
+        elif fit_mode == "cover_w":  # 宽度撑满，高度随比例
+            base_w = canvas_w
+            base_h = int(canvas_w / src_ratio)
+
+        elif fit_mode == "cover_h":  # 高度撑满，宽度随比例
+            base_h = canvas_h
+            base_w = int(canvas_h * src_ratio)
+
+        else:  # "cover" (Default) - 智能填满
+            if src_ratio > canvas_ratio:
+                # 图片比画布更宽 -> 按高度填满，截取两边
+                base_h = canvas_h
+                base_w = int(canvas_h * src_ratio)
+            else:
+                # 图片比画布更高 -> 按宽度填满，截取上下
+                base_w = canvas_w
+                base_h = int(canvas_w / src_ratio)
+
+    # 2. 应用缩放 (Scale)
+    final_w = int(base_w * scale)
+    final_h = int(base_h * scale)
+
+    # 3. 计算对齐 (Alignment)
+    if ax == "left":
+        px = 0
+    elif ax == "right":
+        px = canvas_w - final_w
+    else:  # center
+        px = (canvas_w - final_w) // 2
+
+    if ay == "top":
+        py = 0
+    elif ay == "bottom":
+        py = canvas_h - final_h
+    else:  # center
+        py = (canvas_h - final_h) // 2
+
+    return final_w, final_h, px, py
+
+
+# ==================================================================================
 # LAYER 1: Layout Calculation
 # ==================================================================================
 def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
@@ -206,23 +276,13 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     else:
         final_h = content_final_h
         bg_aspect_h = 0
-        if not is_video_mode:
-            if (bg_name := menu_data.get("background")) and plugin_storage.bg_dir:
-                try:
-                    with Image.open(plugin_storage.bg_dir / bg_name) as bg_img:
-                        if bg_img.width > 0: bg_aspect_h = int(final_w * (bg_img.height / bg_img.width))
-                except:
-                    pass
-        else:
-            if (v_name := menu_data.get("bg_video")) and plugin_storage.video_dir:
-                try:
-                    reader = imageio.get_reader(str(plugin_storage.video_dir / v_name))
-                    meta = reader.get_meta_data()
-                    reader.close()
-                    vw, vh = meta.get('size', meta.get('source_size', (0, 0)))
-                    if vw > 0: bg_aspect_h = int(final_w * (vh / vw))
-                except:
-                    pass
+        if not is_video_mode and (bg_name := menu_data.get("background")) and plugin_storage.bg_dir:
+            try:
+                with Image.open(plugin_storage.bg_dir / bg_name) as bg_img:
+                    if bg_img.width > 0:
+                        bg_aspect_h = int(final_w * (bg_img.height / bg_img.width))
+            except:
+                pass
         if bg_aspect_h > final_h: final_h = bg_aspect_h
 
     overlay = Image.new("RGBA", (final_w, final_h), (0, 0, 0, 0))
@@ -320,25 +380,34 @@ def render_static(menu_data: dict) -> Image.Image:
     if (bg_name := menu_data.get("background")) and plugin_storage.bg_dir:
         try:
             with Image.open(plugin_storage.bg_dir / bg_name).convert("RGBA") as bg_img:
-                fit = menu_data.get("bg_fit_mode", "cover_w")
-                if fit == "custom":
-                    bg_rz = bg_img.resize((s(int(menu_data.get("bg_custom_width", 1000))),
-                                           s(int(menu_data.get("bg_custom_height", 1000)))), Image.Resampling.LANCZOS)
-                else:
-                    bg_rz = bg_img.resize((fw, int(bg_img.height * (fw / bg_img.width))), Image.Resampling.LANCZOS)
-                bx, by = 0, 0
-                ax, ay = menu_data.get("bg_align_x", "center"), menu_data.get("bg_align_y", "top")
-                if ax == "center":
-                    bx = (fw - bg_rz.width) // 2
-                elif ax == "right":
-                    bx = fw - bg_rz.width
-                if ay == "center":
-                    by = (fh - bg_rz.height) // 2
-                elif ay == "bottom":
-                    by = fh - bg_rz.height
-                final_img.paste(bg_rz, (bx, by), bg_rz)
-        except Exception:
-            pass
+
+                # Fetch params - Default fit_mode changed to "cover" to match frontend
+                fit_mode = menu_data.get("bg_fit_mode", "cover")
+
+                # Fetch params - Align defaults changed to "center"
+                align_x = menu_data.get("bg_align_x", "center")
+                align_y = menu_data.get("bg_align_y", "center")
+
+                # Use video_scale/bg_scale if available
+                bg_scale = float(menu_data.get("video_scale", 1.0))
+
+                custom_w = s(int(menu_data.get("bg_custom_width", 1000)))
+                custom_h = s(int(menu_data.get("bg_custom_height", 1000)))
+
+                # Calculate geometry
+                new_w, new_h, px, py = _calculate_bg_layout(
+                    bg_img.width, bg_img.height, fw, fh,
+                    fit_mode, bg_scale, align_x, align_y,
+                    custom_w, custom_h
+                )
+
+                # Resize (LANCZOS for static quality)
+                bg_rz = bg_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                # Paste
+                final_img.paste(bg_rz, (px, py), bg_rz)
+        except Exception as e:
+            logger.error(f"Static BG Error: {e}")
 
     final_img.alpha_composite(layout_img)
     return final_img
@@ -350,7 +419,6 @@ def render_static(menu_data: dict) -> Image.Image:
 def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
     writer = None
     reader = None
-    # 默认使用原路径，若需欺骗后缀则在下方修改
     write_path = output_path
 
     try:
@@ -366,7 +434,9 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
         end_t = float(menu_data.get("video_end", 0))
         target_fps = int(menu_data.get("video_fps", 15))
         frame_ratio = max(1, int(menu_data.get("video_frame_ratio", 1)))
-        video_content_scale = float(menu_data.get("video_scale", 1.0))
+
+        bg_scale_factor = float(menu_data.get("video_scale", 1.0))
+
         fps_mode = menu_data.get("video_fps_mode", "fixed")
 
         reader = imageio.get_reader(str(video_path))
@@ -382,42 +452,46 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
 
         fmt = menu_data.get("video_export_format", "apng").lower()
         writer_kwargs = {}
-        format_str = None  # 默认为None，让imageio根据扩展名自动判断；特殊情况强制指定
+        format_str = None
 
         if fmt == "apng":
-            # [关键修复] imageio 的 FFMPEG 插件会检查文件扩展名，不支持直接写入 .png/.apng
-            # 我们使用 .mp4 后缀欺骗插件通过初始化，但通过 output_params=['-f', 'apng'] 强制 FFMPEG 实际上输出 APNG 数据
             format_str = 'FFMPEG'
-
-            # 使用临时的 mp4 文件名
             write_path = output_path.parent / f"temp_{output_path.stem}.mp4"
-
             writer_kwargs = {
-                'fps': target_fps,
-                'codec': 'apng',
-                'pixelformat': 'rgba',
-                'output_params': ['-f', 'apng']
+                'fps': target_fps, 'codec': 'apng', 'pixelformat': 'rgba',
+                'output_params': ['-f', 'apng', '-pred', 'mixed', '-plays', '0']
             }
-
-            # 确保临时文件不存在
             if write_path.exists():
                 try:
                     write_path.unlink()
                 except:
                     pass
-
         elif fmt == "webp":
             format_str = 'WEBP'
-            writer_kwargs = {'fps': target_fps, 'quality': 80, 'loop': 0}
+            writer_kwargs = {'fps': target_fps, 'quality': 60, 'loop': 0, 'method': 6, 'lossless': False}
         elif fmt == "gif":
             format_str = 'GIF'
-            writer_kwargs = {'fps': target_fps, 'loop': 0}
+            writer_kwargs = {'fps': target_fps, 'loop': 0, 'quantizer': 'nq', 'palettesize': 128}
         else:
-            # mp4 或其他格式，默认逻辑
             writer_kwargs = {'fps': target_fps}
 
-        fit_mode = menu_data.get("bg_fit_mode", "cover_w")
-        align_y = menu_data.get("video_align", "center")
+        # Config params - Fix logic to fallback to generic BG params if video params missing
+        fit_mode = menu_data.get("bg_fit_mode", "cover")  # Changed default to 'cover'
+
+        # FALLBACK LOGIC: If video_align_x/align missing, try bg_align_x/y
+        # Added .get("video_align_y") check for legacy compatibility
+        align_x = menu_data.get("video_align_x") or menu_data.get("bg_align_x", "center")
+        align_y = menu_data.get("video_align") or menu_data.get("video_align_y") or menu_data.get("bg_align_y",
+                                                                                                  "center")
+
+        scale_global = float(menu_data.get("export_scale", 1.0))
+
+        def s_loc(val):
+            return int(val * scale_global)
+
+        custom_w = s_loc(int(menu_data.get("bg_custom_width", 1000)))
+        custom_h = s_loc(int(menu_data.get("bg_custom_height", 1000)))
+
         canvas_bg_color = hex_to_rgb(menu_data.get("canvas_color", "#1e1e1e"))
         base_bg = np.zeros((ch, cw, 4), dtype=np.uint8)
         base_bg[:, :, 0] = canvas_bg_color[0]
@@ -435,41 +509,29 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
             if i % step != 0: continue
 
             fh_orig, fw_orig = frame.shape[:2]
-            scaled_fw_orig = int(fw_orig * video_content_scale)
-            scaled_fh_orig = int(fh_orig * video_content_scale)
-            new_w, new_h = scaled_fw_orig, scaled_fh_orig
 
-            if fit_mode == "cover_w":
-                scale_factor = cw / scaled_fw_orig
-                new_w, new_h = cw, int(scaled_fh_orig * scale_factor)
-            elif fit_mode == "contain":
-                scale_factor = min(cw / scaled_fw_orig, ch / scaled_fh_orig)
-                new_w, new_h = int(scaled_fw_orig * scale_factor), int(scaled_fh_orig * scale_factor)
-            else:
-                scale_factor = max(cw / scaled_fw_orig, ch / scaled_fh_orig)
-                new_w, new_h = int(scaled_fw_orig * scale_factor), int(scaled_fh_orig * scale_factor)
+            new_w, new_h, px, py = _calculate_bg_layout(
+                fw_orig, fh_orig, cw, ch,
+                fit_mode, bg_scale_factor, align_x, align_y,
+                custom_w, custom_h
+            )
 
-            img_pil = Image.fromarray(frame).resize((new_w, new_h), Image.Resampling.BILINEAR)
+            img_pil = Image.fromarray(frame).resize((new_w, new_h), Image.Resampling.NEAREST)
             frame_resized = np.array(img_pil)
-            current_canvas_bg = base_bg.copy()
 
-            px, py = (cw - new_w) // 2, 0
-            if align_y == "top":
-                py = 0
-            elif align_y == "bottom":
-                py = ch - new_h
-            else:
-                py = (ch - new_h) // 2
+            current_canvas_bg = base_bg.copy()
 
             y1, y2 = max(0, py), min(ch, py + new_h)
             x1, x2 = max(0, px), min(cw, px + new_w)
+
             sy1, sy2 = max(0, -py), min(new_h, new_h - (py + new_h - ch))
             sx1, sx2 = max(0, -px), min(new_w, new_w - (px + new_w - cw))
 
-            if frame_resized.shape[2] == 3:
-                current_canvas_bg[y1:y2, x1:x2, :3] = frame_resized[sy1:sy2, sx1:sx2, :]
-            else:
-                current_canvas_bg[y1:y2, x1:x2, :] = frame_resized[sy1:sy2, sx1:sx2, :]
+            if y2 > y1 and x2 > x1:
+                if frame_resized.shape[2] == 3:
+                    current_canvas_bg[y1:y2, x1:x2, :3] = frame_resized[sy1:sy2, sx1:sx2, :]
+                else:
+                    current_canvas_bg[y1:y2, x1:x2, :] = frame_resized[sy1:sy2, sx1:sx2, :]
 
             bg_with_video_pil = Image.fromarray(current_canvas_bg, mode="RGBA")
             bg_with_video_pil.alpha_composite(foreground)
@@ -481,7 +543,6 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
         writer.close()
         writer = None
 
-        # 如果使用了临时文件，重命名回最终目标路径
         if write_path != output_path:
             if output_path.exists():
                 output_path.unlink()

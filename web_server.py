@@ -1,4 +1,4 @@
-import os, sys, asyncio, traceback, uuid
+import os, sys, asyncio, traceback, uuid, json, shutil, zipfile
 from pathlib import Path
 from multiprocessing import Queue
 from types import ModuleType
@@ -36,12 +36,11 @@ def mock_astrbot_modules(queue):
         sys.modules["astrbot.api.star"] = m_star
 
 
-# --- 修改函数签名，增加 command_data 参数 ---
 def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data=None):
     mock_astrbot_modules(log_queue)
     try:
         from quart import Quart, request, render_template, redirect, url_for, session, jsonify, send_from_directory, \
-            send_file
+            send_file, Response
         from hypercorn.config import Config
         from hypercorn.asyncio import serve
 
@@ -58,6 +57,7 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data
 
         app = Quart(__name__, template_folder=str(PLUGIN_DIR / "templates"), static_folder=str(PLUGIN_DIR / "static"))
         app.secret_key = os.urandom(24)
+        app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 限制上传大小 500MB
 
         @app.before_request
         async def check_auth():
@@ -77,10 +77,9 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data
         async def index():
             return await render_template("index.html")
 
-        # --- 新增 API：获取指令数据 ---
+        # --- 获取指令数据 ---
         @app.route("/api/commands", methods=["GET"])
         async def get_commands_data():
-            # command_data 是在进程启动时传入的字典
             return jsonify(command_data or {})
 
         @app.route("/api/config", methods=["GET"])
@@ -124,8 +123,6 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data
             m = await request.get_json()
             m_id = m.get("id")
             is_video = (m.get("bg_type") == "video")
-
-            # [修改] 静态使用 png
             fmt = "png"
             if is_video:
                 fmt = m.get("video_export_format", "apng")
@@ -145,7 +142,6 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data
                 else:
                     img = await asyncio.to_thread(render_static, m)
                     byte_io = BytesIO()
-                    # Export as PNG
                     await asyncio.to_thread(img.save, byte_io, 'PNG')
                     byte_io.seek(0)
                     cache_path.write_bytes(byte_io.getvalue())
@@ -153,6 +149,127 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data
                                            attachment_filename=f"{m.get('name')}.png")
             except Exception as e:
                 log_queue.put(("ERROR", f"Render Failed: {traceback.format_exc()}"))
+                return jsonify({"error": str(e)}), 500
+
+        # ==========================================================
+        #  打包导出 API
+        # ==========================================================
+        @app.route("/api/export_pack", methods=["POST"])
+        async def export_pack():
+            try:
+                menu = await request.get_json()
+                memory_file = BytesIO()
+
+                with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    # 1. 写入配置
+                    zf.writestr('menu.json', json.dumps(menu, indent=2, ensure_ascii=False))
+
+                    # 2. 辅助打包函数
+                    def add_asset(filename, folder_name, source_dir):
+                        if not filename: return
+                        src = source_dir / filename
+                        if src.exists():
+                            zf.write(src, arcname=f"assets/{folder_name}/{filename}")
+
+                    # 3. 收集素材
+                    add_asset(menu.get('background'), 'backgrounds', plugin_storage.bg_dir)
+                    add_asset(menu.get('bg_video'), 'videos', plugin_storage.video_dir)
+
+                    fonts_to_pack = set()
+                    keys = ['title_font', 'group_title_font', 'group_sub_font', 'item_name_font', 'item_desc_font']
+                    for key in keys:
+                        if val := menu.get(key): fonts_to_pack.add(val)
+
+                    for group in menu.get('groups', []):
+                        if val := group.get('title_font'): fonts_to_pack.add(val)
+                        if val := group.get('group_title_font'): fonts_to_pack.add(val)  # 兼容
+                        if val := group.get('group_sub_font'): fonts_to_pack.add(val)  # 兼容
+
+                        for item in group.get('items', []):
+                            if val := item.get('icon'):
+                                add_asset(val, 'icons', plugin_storage.icon_dir)
+                            if val := item.get('name_font'): fonts_to_pack.add(val)
+                            if val := item.get('desc_font'): fonts_to_pack.add(val)
+
+                    for font in fonts_to_pack:
+                        add_asset(font, 'fonts', plugin_storage.fonts_dir)
+
+                    for widget in menu.get('custom_widgets', []):
+                        if widget.get('type') == 'image' and widget.get('content'):
+                            add_asset(widget.get('content'), 'widgets', plugin_storage.img_dir)
+                        if widget.get('font'):
+                            add_asset(widget.get('font'), 'fonts', plugin_storage.fonts_dir)
+
+                memory_file.seek(0)
+                return Response(memory_file.getvalue(), mimetype="application/zip")
+            except Exception as e:
+                log_queue.put(("ERROR", f"Export Pack Failed: {traceback.format_exc()}"))
+                return jsonify({"error": str(e)}), 500
+
+        # ==========================================================
+        #  打包导入 API
+        # ==========================================================
+        @app.route("/api/import_pack", methods=["POST"])
+        async def import_pack():
+            try:
+                files = await request.files
+                file_obj = files.get('file')
+                if not file_obj:
+                    return jsonify({"error": "No file uploaded"}), 400
+
+                content = file_obj.read()
+                memory_file = BytesIO(content)
+                new_menu = None
+
+                with zipfile.ZipFile(memory_file, 'r') as zf:
+                    if 'menu.json' not in zf.namelist():
+                        return jsonify({"error": "Invalid Pack: menu.json missing"}), 400
+
+                    with zf.open('menu.json') as f:
+                        new_menu = json.loads(f.read().decode('utf-8'))
+
+                    # 重置 ID 和名称
+                    import time
+                    new_menu['id'] = f"m_imp_{int(time.time() * 1000)}"
+                    new_menu['name'] = f"{new_menu.get('name', 'Imported')} (导入)"
+
+                    # 映射目录
+                    dir_map = {
+                        'assets/backgrounds/': plugin_storage.bg_dir,
+                        'assets/videos/': plugin_storage.video_dir,
+                        'assets/fonts/': plugin_storage.fonts_dir,
+                        'assets/icons/': plugin_storage.icon_dir,
+                        'assets/widgets/': plugin_storage.img_dir,
+                    }
+
+                    for file_info in zf.infolist():
+                        if file_info.filename == 'menu.json' or file_info.filename.endswith('/'):
+                            continue
+
+                        # 查找目标路径
+                        target_dir = None
+                        for prefix, path in dir_map.items():
+                            if file_info.filename.startswith(prefix):
+                                target_dir = path
+                                break
+
+                        if target_dir:
+                            file_name = Path(file_info.filename).name
+                            target_path = target_dir / file_name
+                            # 直接写入覆盖
+                            with zf.open(file_info) as source, open(target_path, "wb") as target:
+                                shutil.copyfileobj(source, target)
+
+                # 更新配置
+                config = plugin_storage.load_config()
+                if 'menus' not in config: config['menus'] = []
+                config['menus'].append(new_menu)
+                plugin_storage.save_config(config)
+
+                return jsonify({"status": "ok", "menu_name": new_menu['name']})
+
+            except Exception as e:
+                log_queue.put(("ERROR", f"Import Pack Failed: {traceback.format_exc()}"))
                 return jsonify({"error": str(e)}), 500
 
         @app.route("/raw_assets/backgrounds/<path:path>")

@@ -107,6 +107,150 @@ function getStyle(obj, key, fallbackGlobalKey) {
 }
 
 // =============================================================
+//  核心新功能：批量上传、导入、导出
+// =============================================================
+
+/**
+ * 批量上传文件
+ * 支持多选，循环上传，最后统一刷新
+ */
+async function uploadFile(type, inp) {
+    const files = inp.files;
+    if (!files || files.length === 0) return;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // 显示加载状态（可选）
+    const originalText = inp.previousElementSibling ? inp.previousElementSibling.innerText : '';
+    if(inp.previousElementSibling) inp.previousElementSibling.innerText = "⏳...";
+
+    for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const d = new FormData();
+        d.append("type", type);
+        d.append("file", f);
+
+        try {
+            const res = await api("/upload", "POST", d);
+            successCount++;
+
+            // 如果是单个文件上传，且是背景/视频，直接应用到当前菜单
+            if (files.length === 1) {
+                const m = getCurrentMenu();
+                if (type === 'video' && res.filename) m.bg_video = res.filename;
+                else if (type === 'background' && res.filename) m.background = res.filename;
+                else if (type === 'icon' && selectedItem.gIdx !== -1) {
+                     // 图标特殊处理：如果是单个上传，直接赋值给当前选中项
+                     updateProp('item', selectedItem.gIdx, selectedItem.iIdx, 'icon', res.filename);
+                }
+            }
+        } catch (e) {
+            console.error(`File ${f.name} upload failed:`, e);
+            failCount++;
+        }
+    }
+
+    // 恢复按钮文本
+    if(inp.previousElementSibling) inp.previousElementSibling.innerText = originalText;
+
+    // 刷新资源列表
+    await loadAssets();
+    if (type === 'font') initFonts();
+    renderAll();
+
+    // 如果在编辑组件或属性面板，刷新下拉框
+    if (selectedWidgetIdx !== -1) updateWidgetEditor(getCurrentMenu());
+    if (selectedItem.gIdx !== -1) openContextEditor('item', selectedItem.gIdx, selectedItem.iIdx);
+
+    alert(`上传完成\n✅ 成功: ${successCount}\n❌ 失败: ${failCount}`);
+    inp.value = ""; // 清空 input 防止重复触发
+}
+
+/**
+ * 导出模板包 (Zip)
+ * 包含当前菜单配置 + 所有引用的素材
+ */
+async function exportTemplatePack() {
+    await api("/config", "POST", appState.fullConfig); // 先保存
+    const menu = getCurrentMenu();
+
+    if(!confirm(`即将导出菜单模板 "${menu.name}" 及其使用的图片、字体等素材。\n是否继续？`)) return;
+
+    try {
+        const res = await fetch("/api/export_pack", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(menu)
+        });
+
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${menu.name}_pack.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } else {
+            const err = await res.text();
+            alert("导出失败: " + err);
+        }
+    } catch (e) {
+        alert("导出请求错误: " + e);
+    }
+}
+
+/**
+ * 导入模板包 (Zip)
+ */
+async function importTemplatePack(inp) {
+    const file = inp.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        // 显示 loading
+        const btn = inp.previousElementSibling;
+        const oldText = btn.innerText;
+        btn.innerText = "⏳";
+        btn.disabled = true;
+
+        const res = await fetch("/api/import_pack", {
+            method: "POST",
+            body: formData
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            alert(`✅ 导入成功！\n已导入菜单: ${data.menu_name}`);
+            // 重新加载配置和资源
+            await loadAssets();
+            initFonts(); // 刷新字体
+            await loadConfig();
+            // 切换到新导入的菜单 (假设后端将其放在了最后)
+            if (appState.fullConfig.menus.length > 0) {
+                switchMenu(appState.fullConfig.menus[appState.fullConfig.menus.length - 1].id);
+            }
+        } else {
+            const err = await res.text();
+            alert("❌ 导入失败: " + err);
+        }
+    } catch (e) {
+        alert("导入错误: " + e);
+    } finally {
+        inp.value = "";
+        const btn = inp.previousElementSibling;
+        btn.innerText = "📦"; // 恢复按钮图标（或者你原来的图标）
+        btn.disabled = false;
+    }
+}
+
+// =============================================================
 //  菜单基础操作
 // =============================================================
 
@@ -372,7 +516,7 @@ function toggleBgPanel() {
 }
 
 // =============================================================
-//  渲染画布 (HTML DOM Preview) - [修复版]
+//  渲染画布 (HTML DOM Preview) - [Flexbox 修复版]
 // =============================================================
 
 function renderCanvas(m) {
@@ -1105,7 +1249,8 @@ function generatePropForm(type, obj, gIdx, iIdx) {
                     ${icons}
                 </select>
                 <button class="btn btn-secondary" onclick="document.getElementById('itemIconUp').click()" title="上传新图标">⬆</button>
-                <input type="file" id="itemIconUp" hidden accept="image/*" onchange="uploadFile('icon', this)">
+                <!-- multiple -->
+                <input type="file" id="itemIconUp" hidden accept="image/*" multiple onchange="uploadFile('icon', this)">
             </div>
         </div>`;
 

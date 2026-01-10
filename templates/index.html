@@ -14,6 +14,11 @@
         <div style="display:flex; gap:5px; margin-bottom:5px;">
             <select id="menuSelect" onchange="switchMenu(this.value)" style="flex:1"></select>
             <button class="icon-btn" onclick="createNewMenu()" title="新建空白菜单">+</button>
+
+            <!-- 新增：导入模版包 -->
+            <button class="icon-btn" onclick="document.getElementById('importPackInput').click()" title="导入模板包 (Zip)">📦</button>
+            <input type="file" id="importPackInput" hidden accept=".zip" onchange="importTemplatePack(this)">
+
             <button class="icon-btn" onclick="openAutoFillModal()" title="自动填充指令" style="color: #64b5f6;">⚡</button>
         </div>
         <div style="display:flex; gap:5px;">
@@ -39,7 +44,8 @@
         <div class="sidebar-header">
             <h3>🛠️ 全局配置</h3>
             <div style="display:flex; gap:5px;">
-                <button class="btn btn-secondary" onclick="exportImage()">📷 导出</button>
+                <button class="btn btn-secondary" onclick="exportImage()">📷 导出图</button>
+                <button class="btn btn-secondary" onclick="exportTemplatePack()">📦 导出包</button>
                 <button class="btn btn-primary" onclick="saveAll()">💾 保存</button>
             </div>
         </div>
@@ -144,7 +150,8 @@
                         <div style="display:flex; gap:5px;">
                             <select id="bgSelect" onchange="updateBg(this.value)" style="flex:1"></select>
                             <button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button>
-                            <input type="file" id="bgUp" hidden onchange="uploadFile('background', this)">
+                            <!-- multiple -->
+                            <input type="file" id="bgUp" hidden multiple onchange="uploadFile('background', this)">
                         </div>
                     </div>
                 </div>
@@ -156,7 +163,8 @@
                         <div style="display:flex; gap:5px;">
                             <select id="vidSelect" onchange="updateMenuMeta('bg_video', this.value); renderCanvas(getCurrentMenu());" style="flex:1"></select>
                             <button class="btn btn-secondary" onclick="document.getElementById('vidUp').click()">⬆</button>
-                            <input type="file" id="vidUp" hidden accept="video/*" onchange="uploadFile('video', this)">
+                            <!-- multiple -->
+                            <input type="file" id="vidUp" hidden accept="video/*" multiple onchange="uploadFile('video', this)">
                         </div>
                     </div>
 
@@ -219,7 +227,8 @@
                 <div class="form-row"><label>功能名字体</label><select id="fIName" onchange="updateMenuMeta('item_name_font', this.value)"></select></div>
                 <div class="form-row"><label>功能描述字体</label><select id="fIDesc" onchange="updateMenuMeta('item_desc_font', this.value)"></select></div>
                 <button class="btn btn-secondary btn-block" style="margin-top:5px" onclick="document.getElementById('fontUp').click()">📤 上传新字体</button>
-                <input type="file" id="fontUp" hidden accept=".ttf,.otf" onchange="uploadFile('font', this)">
+                <!-- multiple -->
+                <input type="file" id="fontUp" hidden accept=".ttf,.otf" multiple onchange="uploadFile('font', this)">
             </div>
 
             <div class="section">
@@ -242,7 +251,10 @@
                         </div>
                     </div>
                     <div id="wEdit-image" style="display:none">
-                        <div style="display:flex;gap:5px"><select id="widImgSelect" onchange="updateWidget('content', this.value)" style="flex:1"></select><button class="btn btn-secondary" onclick="document.getElementById('widImgUp').click()">⬆</button><input type="file" id="widImgUp" hidden onchange="uploadFile('widget_img', this)"></div>
+                        <div style="display:flex;gap:5px"><select id="widImgSelect" onchange="updateWidget('content', this.value)" style="flex:1"></select><button class="btn btn-secondary" onclick="document.getElementById('widImgUp').click()">⬆</button>
+                        <!-- multiple -->
+                        <input type="file" id="widImgUp" hidden multiple onchange="uploadFile('widget_img', this)">
+                        </div>
                         <div style="display:flex;gap:5px;margin-top:5px"><input type="number" id="widW" oninput="updateWidget('width', this.value)"><input type="number" id="widH" oninput="updateWidget('height', this.value)"></div>
                     </div>
                     <button class="btn btn-danger btn-block" style="margin-top:5px" onclick="deleteWidget()">删除组件</button>

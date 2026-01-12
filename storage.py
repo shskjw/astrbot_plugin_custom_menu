@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-# AstrBot API
 try:
     from astrbot.api.star import StarTools
     from astrbot.api import logger
@@ -95,6 +94,7 @@ class PluginStorage:
             "id": str(uuid.uuid4()),
             "enabled": True,
             "name": name,
+            "trigger_keywords": "",
             "title": "功能菜单",
             "sub_title": "System Menu",
             "title_align": "center",
@@ -134,6 +134,7 @@ class PluginStorage:
             "title_font": "title.ttf",
             "group_title_font": "text.ttf",
             "group_sub_font": "text.ttf",
+            "group_sub_align": "bottom",
             "item_name_font": "title.ttf",
             "item_desc_font": "text.ttf",
             "shadow_enabled": False,
@@ -190,15 +191,10 @@ class PluginStorage:
         }
 
     def get_menu_output_cache_path(self, menu_id: str, is_video: bool, output_format: str = "png") -> Path:
-        """
-        获取缓存路径。
-        is_video=False -> .png (静态图统一用png)
-        is_video=True -> .png(apng) / .webp / .gif
-        """
         if not self.outputs_dir: self.init_paths()
 
         if not is_video:
-            ext = "png"  # [恢复] 静态用 png
+            ext = "png"
         else:
             fmt = output_format.lower()
             if fmt == 'apng':

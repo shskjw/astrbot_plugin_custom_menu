@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>菜单编辑器 v1.8.5</title>
+    <title>菜单编辑器 v1.8.6</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link rel="stylesheet" href="/static/style.css?v=1.8.5">
+    <link rel="stylesheet" href="/static/style.css?v=1.8.6">
 </head>
 <body>
 
@@ -21,11 +21,15 @@
 
             <button class="icon-btn" onclick="openAutoFillModal()" title="自动填充指令" style="color: #64b5f6;">⚡</button>
         </div>
-        <div style="display:flex; gap:5px;">
+        <div style="display:flex; gap:5px; margin-bottom:5px;">
             <input id="menuNameInput" placeholder="名称" oninput="updateMenuMeta('name', this.value)" style="flex:1">
             <button class="icon-btn" id="enableBtn" onclick="toggleEnable()">启用</button>
             <button class="icon-btn" onclick="duplicateMenu()" title="复制当前模板">📑</button>
             <button class="icon-btn" style="color:#f56c6c; border-color:#f56c6c" onclick="deleteMenu()" title="删除">🗑️</button>
+        </div>
+        <!-- 新增：触发词设置 -->
+        <div>
+            <input id="triggerKeywordsInput" placeholder="自定义触发词 (逗号分隔，为空则使用全局正则)" oninput="updateMenuMeta('trigger_keywords', this.value)" style="width:100%; border:1px solid #444; background:#222; color:#ccc; font-size:10px; padding:10px;">
         </div>
     </div>
 
@@ -224,6 +228,16 @@
                 <div class="form-row"><label>主/副标题字体</label><select id="fTitle" onchange="updateMenuMeta('title_font', this.value)"></select></div>
                 <div class="form-row"><label>分组标题字体</label><select id="fGTitle" onchange="updateMenuMeta('group_title_font', this.value)"></select></div>
                 <div class="form-row"><label>分组副标题字体</label><select id="fGSub" onchange="updateMenuMeta('group_sub_font', this.value)"></select></div>
+
+                <!-- 新增全局副标题对齐 -->
+                <div class="form-row"><label>分组副标题默认对齐</label>
+                    <select id="fGSubAlign" onchange="updateMenuMeta('group_sub_align', this.value)">
+                        <option value="bottom">底对齐 (Bottom)</option>
+                        <option value="center">居中 (Center)</option>
+                        <option value="top">顶对齐 (Top)</option>
+                    </select>
+                </div>
+
                 <div class="form-row"><label>功能名字体</label><select id="fIName" onchange="updateMenuMeta('item_name_font', this.value)"></select></div>
                 <div class="form-row"><label>功能描述字体</label><select id="fIDesc" onchange="updateMenuMeta('item_desc_font', this.value)"></select></div>
                 <button class="btn btn-secondary btn-block" style="margin-top:5px" onclick="document.getElementById('fontUp').click()">📤 上传新字体</button>
@@ -290,6 +304,6 @@
     </div>
 </div>
 
-<script src="/static/editor.js?v=1.8.5"></script>
+<script src="/static/editor.js?v=1.8.6"></script>
 </body>
 </html>

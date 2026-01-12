@@ -4,7 +4,7 @@ import json
 import multiprocessing
 import traceback
 import re
-import os  # 新增引用
+import os
 import collections
 from pathlib import Path
 import threading
@@ -14,14 +14,11 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import event
 from astrbot.api.event import filter
 from astrbot.api import logger
-from astrbot.api.message_components import File, Plain  # 新增引用：用于发送文件和纯文本
+from astrbot.api.message_components import File, Plain
 
-# --- 自动填充功能需要的引用 ---
 from astrbot.core.star.star_handler import star_handlers_registry, StarHandlerMetadata
 from astrbot.core.star.filter.command import CommandFilter
 from astrbot.core.star.filter.command_group import CommandGroupFilter
-
-# ---------------------------
 
 try:
     from . import storage
@@ -44,7 +41,7 @@ def _get_local_ip_sync():
 async def get_local_ip(): return await asyncio.to_thread(_get_local_ip_sync)
 
 
-@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.7.6")
+@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.8.0")
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -103,9 +100,7 @@ class CustomMenuPlugin(Star):
             except:
                 continue
 
-    # --- 获取 AstrBot 指令数据 (自动填充功能) ---
     def get_astrbot_commands(self) -> Dict[str, List[Dict[str, str]]]:
-        """获取所有插件及其命令列表, 返回结构化数据"""
         plugin_commands = collections.defaultdict(list)
         try:
             all_stars_metadata = self.context.get_all_stars()
@@ -148,10 +143,6 @@ class CustomMenuPlugin(Star):
         return dict(plugin_commands)
 
     def _yield_smart_result(self, event_obj, path_str: str):
-        """
-        如果文件 <= 15MB，发送图片。
-        如果文件 > 15MB，发送文件。
-        """
         try:
             size_bytes = os.path.getsize(path_str)
             size_mb = size_bytes / (1024 * 1024)
@@ -169,7 +160,7 @@ class CustomMenuPlugin(Star):
             logger.error(f"检查文件大小时出错: {e}")
             return event_obj.image_result(path_str)
 
-    async def _generate_menu_chain(self, event_obj):
+    async def _generate_menu_chain(self, event_obj, specific_menus=None):
         if self._init_task and not self._init_task.done():
             try:
                 await asyncio.wait_for(self._init_task, timeout=5.0)
@@ -180,13 +171,26 @@ class CustomMenuPlugin(Star):
 
         try:
             from .renderer.menu import render_static, render_animated
-            root_config = await asyncio.to_thread(storage.plugin_storage.load_config)
-            menus = root_config.get("menus", [])
-            active_menus = [m for m in menus if m.get("enabled", True)]
 
-            if not active_menus: yield event_obj.plain_result("⚠️ 当前没有启用的菜单，请在后台开启。"); return
+            # 如果没有传入指定的菜单列表，则加载全部并筛选通用菜单
+            target_menus = []
+            if specific_menus:
+                target_menus = specific_menus
+            else:
+                # 加载所有启用的、且没有设置特定触发词的菜单（作为默认菜单）
+                root_config = await asyncio.to_thread(storage.plugin_storage.load_config)
+                menus = root_config.get("menus", [])
+                target_menus = [
+                    m for m in menus
+                    if m.get("enabled", True) and not m.get("trigger_keywords", "").strip()
+                ]
 
-            for menu_data in active_menus:
+            if not target_menus:
+                if not specific_menus:
+                    yield event_obj.plain_result("⚠️ 当前没有配置默认菜单，请在后台配置或检查触发词。");
+                return
+
+            for menu_data in target_menus:
                 menu_id = menu_data.get("id")
                 is_video_mode = (menu_data.get("bg_type") == "video")
 
@@ -197,10 +201,8 @@ class CustomMenuPlugin(Star):
                 cache_path = storage.plugin_storage.get_menu_output_cache_path(menu_id, is_video_mode,
                                                                                output_format_key)
 
-                # --- 1. 缓存命中情况 ---
                 if cache_path.exists():
                     logger.info(f"✅ 从缓存发送: {menu_data.get('name')}")
-                    # 使用智能发送逻辑
                     yield self._yield_smart_result(event_obj, str(cache_path))
                     continue
 
@@ -210,14 +212,12 @@ class CustomMenuPlugin(Star):
                     if is_video_mode:
                         result_path = await asyncio.to_thread(render_animated, menu_data, cache_path)
                         if result_path and result_path.exists():
-                            # --- 2. 动态渲染完成情况 ---
                             yield self._yield_smart_result(event_obj, str(result_path))
                         else:
                             yield event_obj.plain_result(f"❌ 动态菜单 {menu_data.get('name')} 渲染失败，请检查视频源。")
                     else:
                         img = await asyncio.to_thread(render_static, menu_data)
                         await asyncio.to_thread(img.save, cache_path)
-                        # --- 3. 静态渲染完成情况 ---
                         yield self._yield_smart_result(event_obj, str(cache_path))
 
                 except Exception as e:
@@ -231,11 +231,41 @@ class CustomMenuPlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def menu_smart_check(self, event: event.AstrMessageEvent):
-        msg = event.message_str
-        if not msg or not any(k in msg for k in self.trigger_keywords): return
+        msg = event.message_str.strip()
+        if not msg: return
+
+        # 1. 加载所有菜单配置
+        try:
+            root_config = await asyncio.to_thread(storage.plugin_storage.load_config)
+            all_menus = root_config.get("menus", [])
+            enabled_menus = [m for m in all_menus if m.get("enabled", True)]
+        except Exception as e:
+            logger.error(f"读取配置失败: {e}")
+            return
+
+        # 2. 优先检测：特定触发词菜单
+        matched_specific_menus = []
+        for m in enabled_menus:
+            triggers_str = m.get("trigger_keywords", "")
+            if triggers_str:
+                # 支持逗号、分号、空格分隔
+                triggers = [t.strip() for t in re.split(r'[,，;；\s]+', triggers_str) if t.strip()]
+                if msg in triggers:
+                    matched_specific_menus.append(m)
+
+        # 3. 如果匹配到特定菜单，则只发送这些菜单，不检测全局正则
+        if matched_specific_menus:
+            if hasattr(event, "stop_event_propagation"): event.stop_event_propagation()
+            async for res in self._generate_menu_chain(event, specific_menus=matched_specific_menus):
+                yield res
+            return
+
+        # 4. 如果没有匹配到特定菜单，则检测全局 Regex
         if self.regex_pattern.search(msg):
             if hasattr(event, "stop_event_propagation"): event.stop_event_propagation()
-            async for res in self._generate_menu_chain(event): yield res
+            # 传入 None 让 _generate_menu_chain 内部去筛选默认菜单 (即 trigger_keywords 为空的)
+            async for res in self._generate_menu_chain(event, specific_menus=None):
+                yield res
 
     @filter.command("开启后台")
     async def start_web_cmd(self, event: event.AstrMessageEvent):
@@ -247,7 +277,6 @@ class CustomMenuPlugin(Star):
 
         yield event.plain_result("🚀 正在启动后台...")
 
-        # 获取指令数据 (自动填充)
         command_data = self.get_astrbot_commands()
 
         try:

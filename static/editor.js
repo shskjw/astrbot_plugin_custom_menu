@@ -73,31 +73,60 @@ async function api(url, method = "GET", body = null) {
 
 async function loadConfig() { appState.fullConfig = await api("/config"); }
 async function loadAssets() { appState.assets = await api("/assets"); }
-async function saveAll() { await api("/config", "POST", appState.fullConfig); alert("✅ 已保存"); }
 
+// --- 修复提示逻辑：保存功能 ---
+async function saveAll() {
+    // 获取按钮以改变状态
+    const btn = document.querySelector('button[onclick="saveAll()"]');
+    const oldText = btn ? btn.innerText : "💾 保存";
+    if(btn) { btn.innerText = "⏳ 保存中..."; btn.disabled = true; }
+
+    try {
+        await api("/config", "POST", appState.fullConfig);
+        alert("✅ 配置已保存成功！");
+    } catch(e) {
+        alert("❌ 保存失败: " + e);
+    } finally {
+        if(btn) { btn.innerText = oldText; btn.disabled = false; }
+    }
+}
+
+// --- 修复提示逻辑：导出图片 ---
 async function exportImage() {
-    await api("/config", "POST", appState.fullConfig);
-    const menu = getCurrentMenu();
-    if (menu.bg_type === 'video') alert("⏳ 正在生成动图，视频处理较慢，请耐心等待...");
+    try {
+        await api("/config", "POST", appState.fullConfig);
+        const menu = getCurrentMenu();
 
-    const res = await fetch("/api/export_image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(menu)
-    });
-    if (res.ok) {
-        const blob = await res.blob();
-        const a = document.createElement("a");
-        a.href = window.URL.createObjectURL(blob);
-        const isAnim = menu.bg_type === 'video' && menu.bg_video;
-        let ext = 'png';
-        if (isAnim) {
-            const fmt = menu.video_export_format || 'apng';
-            ext = (fmt === 'apng') ? 'png' : fmt;
+        // 视频导出提示
+        if (menu.bg_type === 'video') {
+            alert("⏳ 正在生成动态视频菜单...\n这可能需要几十秒时间，请耐心等待浏览器下载提示。");
         }
-        a.download = `${menu.name}.${ext}`;
-        a.click();
-    } else alert("导出失败");
+
+        const res = await fetch("/api/export_image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(menu)
+        });
+
+        if (res.ok) {
+            const blob = await res.blob();
+            const a = document.createElement("a");
+            a.href = window.URL.createObjectURL(blob);
+            const isAnim = menu.bg_type === 'video' && menu.bg_video;
+            let ext = 'png';
+            if (isAnim) {
+                const fmt = menu.video_export_format || 'apng';
+                ext = (fmt === 'apng') ? 'png' : fmt;
+            }
+            a.download = `${menu.name}.${ext}`;
+            a.click();
+        } else {
+            const errText = await res.text();
+            alert("❌ 导出失败: " + errText);
+        }
+    } catch(e) {
+        alert("❌ 导出请求异常: " + e);
+    }
 }
 
 function getStyle(obj, key, fallbackGlobalKey) {
@@ -106,14 +135,7 @@ function getStyle(obj, key, fallbackGlobalKey) {
     return m[fallbackGlobalKey];
 }
 
-// =============================================================
-//  核心新功能：批量上传、导入、导出
-// =============================================================
-
-/**
- * 批量上传文件
- * 支持多选，循环上传，最后统一刷新
- */
+// --- 修复提示逻辑：上传文件 ---
 async function uploadFile(type, inp) {
     const files = inp.files;
     if (!files || files.length === 0) return;
@@ -121,7 +143,6 @@ async function uploadFile(type, inp) {
     let successCount = 0;
     let failCount = 0;
 
-    // 显示加载状态（可选）
     const originalText = inp.previousElementSibling ? inp.previousElementSibling.innerText : '';
     if(inp.previousElementSibling) inp.previousElementSibling.innerText = "⏳...";
 
@@ -135,13 +156,11 @@ async function uploadFile(type, inp) {
             const res = await api("/upload", "POST", d);
             successCount++;
 
-            // 如果是单个文件上传，且是背景/视频，直接应用到当前菜单
             if (files.length === 1) {
                 const m = getCurrentMenu();
                 if (type === 'video' && res.filename) m.bg_video = res.filename;
                 else if (type === 'background' && res.filename) m.background = res.filename;
                 else if (type === 'icon' && selectedItem.gIdx !== -1) {
-                     // 图标特殊处理：如果是单个上传，直接赋值给当前选中项
                      updateProp('item', selectedItem.gIdx, selectedItem.iIdx, 'icon', res.filename);
                 }
             }
@@ -151,31 +170,26 @@ async function uploadFile(type, inp) {
         }
     }
 
-    // 恢复按钮文本
     if(inp.previousElementSibling) inp.previousElementSibling.innerText = originalText;
 
-    // 刷新资源列表
     await loadAssets();
     if (type === 'font') initFonts();
     renderAll();
 
-    // 如果在编辑组件或属性面板，刷新下拉框
     if (selectedWidgetIdx !== -1) updateWidgetEditor(getCurrentMenu());
     if (selectedItem.gIdx !== -1) openContextEditor('item', selectedItem.gIdx, selectedItem.iIdx);
 
-    alert(`上传完成\n✅ 成功: ${successCount}\n❌ 失败: ${failCount}`);
-    inp.value = ""; // 清空 input 防止重复触发
+    // 提示
+    alert(`上传完成\n✅ 成功: ${successCount} 个\n❌ 失败: ${failCount} 个`);
+    inp.value = "";
 }
 
-/**
- * 导出模板包 (Zip)
- * 包含当前菜单配置 + 所有引用的素材
- */
+// --- 修复提示逻辑：导出模版包 ---
 async function exportTemplatePack() {
-    await api("/config", "POST", appState.fullConfig); // 先保存
+    await api("/config", "POST", appState.fullConfig);
     const menu = getCurrentMenu();
 
-    if(!confirm(`即将导出菜单模板 "${menu.name}" 及其使用的图片、字体等素材。\n是否继续？`)) return;
+    if(!confirm(`即将导出菜单模板 "${menu.name}" 及其使用的图片、字体等素材。\n这会生成一个 .zip 文件。\n\n是否继续？`)) return;
 
     try {
         const res = await fetch("/api/export_pack", {
@@ -196,16 +210,14 @@ async function exportTemplatePack() {
             window.URL.revokeObjectURL(url);
         } else {
             const err = await res.text();
-            alert("导出失败: " + err);
+            alert("❌ 导出失败: " + err);
         }
     } catch (e) {
-        alert("导出请求错误: " + e);
+        alert("❌ 导出请求错误: " + e);
     }
 }
 
-/**
- * 导入模板包 (Zip)
- */
+// --- 修复提示逻辑：导入模版包 ---
 async function importTemplatePack(inp) {
     const file = inp.files[0];
     if (!file) return;
@@ -214,7 +226,6 @@ async function importTemplatePack(inp) {
     formData.append("file", file);
 
     try {
-        // 显示 loading
         const btn = inp.previousElementSibling;
         const oldText = btn.innerText;
         btn.innerText = "⏳";
@@ -227,12 +238,10 @@ async function importTemplatePack(inp) {
 
         if (res.ok) {
             const data = await res.json();
-            alert(`✅ 导入成功！\n已导入菜单: ${data.menu_name}`);
-            // 重新加载配置和资源
+            alert(`✅ 导入成功！\n\n已导入菜单: ${data.menu_name}\n素材已自动解压。`);
             await loadAssets();
-            initFonts(); // 刷新字体
+            initFonts();
             await loadConfig();
-            // 切换到新导入的菜单 (假设后端将其放在了最后)
             if (appState.fullConfig.menus.length > 0) {
                 switchMenu(appState.fullConfig.menus[appState.fullConfig.menus.length - 1].id);
             }
@@ -241,18 +250,14 @@ async function importTemplatePack(inp) {
             alert("❌ 导入失败: " + err);
         }
     } catch (e) {
-        alert("导入错误: " + e);
+        alert("❌ 导入错误: " + e);
     } finally {
         inp.value = "";
         const btn = inp.previousElementSibling;
-        btn.innerText = "📦"; // 恢复按钮图标（或者你原来的图标）
+        btn.innerText = "📦";
         btn.disabled = false;
     }
 }
-
-// =============================================================
-//  菜单基础操作
-// =============================================================
 
 function switchMenu(id) {
     appState.currentMenuId = id;
@@ -266,11 +271,11 @@ function createNewMenu() {
         id: "m_" + Date.now(),
         name: "新菜单",
         enabled: true,
+        trigger_keywords: "",
         title: "标题",
-        sub_title: "Subtitle", // 默认副标题
+        sub_title: "Subtitle",
         groups: [],
         custom_widgets: [],
-        // --- 核心样式默认值 (关键修复) ---
         title_size: 60,
         group_title_size: 30,
         group_sub_size: 18,
@@ -282,7 +287,6 @@ function createNewMenu() {
         group_sub_color: "#AAAAAA",
         item_name_color: "#FFFFFF",
         item_desc_color: "#AAAAAA",
-        // --- 布局默认值 ---
         layout_columns: 3,
         group_bg_color: "#000000",
         group_bg_alpha: 50,
@@ -347,20 +351,15 @@ function renderMenuSelect() {
 
 function renderAll() {
     const m = getCurrentMenu();
-    // 兼容性/空值防御
     if (!m.video_scale) m.video_scale = 1.0;
     if (!m.bg_fit_mode) m.bg_fit_mode = "cover";
-    if (!m.title_size) m.title_size = 60; // 防御旧数据缺失
+    if (!m.title_size) m.title_size = 60;
 
     updateFormInputs(m);
     renderSidebarGroupList(m);
     renderCanvas(m);
     updateWidgetEditor(m);
 }
-
-// =============================================================
-//  表单与参数更新
-// =============================================================
 
 function setValue(id, val) {
     const el = document.getElementById(id);
@@ -376,7 +375,9 @@ function renderSelect(id, opts, sel, def) {
 }
 
 function updateFormInputs(m) {
-    // 基础设置
+    setValue("menuNameInput", m.name);
+    setValue("triggerKeywordsInput", m.trigger_keywords || "");
+
     setValue("columnInput", m.layout_columns || 3);
     setValue("cvsW", m.canvas_width || 1000);
     setValue("cvsH", m.canvas_height || 2000);
@@ -386,13 +387,11 @@ function updateFormInputs(m) {
     setValue("cvsColorP", m.canvas_color || "#1e1e1e");
     setValue("cvsColorT", m.canvas_color || "#1e1e1e");
 
-    // 背景设置
     setValue("bgType", m.bg_type || "image");
     setValue("bgFit", m.bg_fit_mode || "cover");
     setValue("bgAlignX", m.bg_align_x || "center");
     setValue("bgAlignY", m.bg_align_y || "center");
 
-    // 缩放值
     const bgScale = m.video_scale !== undefined ? m.video_scale : 1.0;
     setValue("bgScaleRange", bgScale);
     setValue("bgScaleInput", bgScale);
@@ -403,7 +402,6 @@ function updateFormInputs(m) {
     setValue("bgCustomH", m.bg_custom_height || 1000);
     toggleBgCustomInputs();
 
-    // 图片与视频资源
     renderSelect("bgSelect", appState.assets.backgrounds, m.background, "无背景");
     renderSelect("vidSelect", appState.assets.videos, m.bg_video, "无视频");
 
@@ -414,7 +412,6 @@ function updateFormInputs(m) {
 
     toggleBgPanel();
 
-    // 样式颜色
     setValue("boxColor", m.group_bg_color || "#000000");
     setValue("boxBlur", m.group_blur_radius || 0);
     setValue("boxAlpha", m.group_bg_alpha !== undefined ? m.group_bg_alpha : 50);
@@ -428,6 +425,7 @@ function updateFormInputs(m) {
     renderSelect("fTitle", appState.assets.fonts, m.title_font);
     renderSelect("fGTitle", appState.assets.fonts, m.group_title_font);
     renderSelect("fGSub", appState.assets.fonts, m.group_sub_font);
+    setValue("fGSubAlign", m.group_sub_align || "bottom");
     renderSelect("fIName", appState.assets.fonts, m.item_name_font);
     renderSelect("fIDesc", appState.assets.fonts, m.item_desc_font);
 
@@ -438,7 +436,6 @@ function updateFormInputs(m) {
     setValue("shadowY", m.shadow_offset_y !== undefined ? m.shadow_offset_y : 2);
     setValue("shadowR", m.shadow_radius !== undefined ? m.shadow_radius : 2);
 
-    // 批量设置颜色输入框
     const colorMap = {
         'title_color': ['cTitleP', 'cTitleT'],
         'subtitle_color': ['cSubP', 'cSubT'],
@@ -471,13 +468,12 @@ function updateMenuMeta(key, val) {
 
 function updateUnifiedBgParams(type, val) {
     const m = getCurrentMenu();
-    // 强制触发更新
     if (type === 'align_x') {
         m.bg_align_x = val;
         m.video_align_x = val;
     } else if (type === 'align_y') {
         m.bg_align_y = val;
-        m.video_align = val; // video_align 是旧 key，保留兼容
+        m.video_align = val;
         m.video_align_y = val;
     } else if (type === 'scale') {
         const floatVal = parseFloat(val);
@@ -515,10 +511,6 @@ function toggleBgPanel() {
     renderCanvas(getCurrentMenu());
 }
 
-// =============================================================
-//  渲染画布 (HTML DOM Preview) - [Flexbox 修复版]
-// =============================================================
-
 function renderCanvas(m) {
     const cvsWrapper = document.getElementById("canvas-wrapper");
     const cvs = document.getElementById("canvas");
@@ -526,7 +518,6 @@ function renderCanvas(m) {
     const vidPreview = document.getElementById("canvas-video-preview");
     const imgPreview = document.getElementById("canvas-img-preview");
 
-    // 1. 计算画布尺寸
     const useFixedSize = String(m.use_canvas_size) === 'true';
     const targetW = parseInt(m.canvas_width) || 1000;
     const targetH = parseInt(m.canvas_height) || 2000;
@@ -553,7 +544,6 @@ function renderCanvas(m) {
         cvsWrapper.style.height = "auto";
     }
 
-    // 2. 渲染背景 (使用 Flexbox 布局修复对齐问题)
     const bgType = m.bg_type || 'image';
     const bgFit = m.bg_fit_mode || 'cover';
     const alignX = m.bg_align_x || 'center';
@@ -561,33 +551,23 @@ function renderCanvas(m) {
     const bgScale = parseFloat(m.video_scale !== undefined ? m.video_scale : 1.0);
     const userBgColor = m.canvas_color || '#1e1e1e';
 
-    // 缩放处理
     const transformCSS = `scale(${bgScale})`;
-
-    // 清空内联背景图 (旧逻辑)
     cvs.style.backgroundImage = 'none';
 
-    // 状态判定
     const hasVideo = bgType === 'video' && m.bg_video;
     const hasImage = bgType === 'image' && m.background;
 
-    // 配置 Preview Layer 容器 (Flexbox 用于绝对对齐)
-    // 重置所有影响布局的样式
     bgPreviewLayer.style.display = (hasVideo || hasImage) ? 'flex' : 'none';
-    bgPreviewLayer.style.flexDirection = 'column'; // 垂直排列，方便主轴/交叉轴映射
+    bgPreviewLayer.style.flexDirection = 'column';
     bgPreviewLayer.style.overflow = 'hidden';
     bgPreviewLayer.style.backgroundColor = userBgColor;
 
-    // 映射对齐到 Flex 属性
-    // justify-content 控制垂直 (因为 flexDirection: column)
-    // align-items 控制水平
     const flexMapY = { 'top': 'flex-start', 'center': 'center', 'bottom': 'flex-end' };
     const flexMapX = { 'left': 'flex-start', 'center': 'center', 'right': 'flex-end' };
 
     bgPreviewLayer.style.justifyContent = flexMapY[alignY] || 'center';
     bgPreviewLayer.style.alignItems = flexMapX[alignX] || 'center';
 
-    // 前景透明化
     if (hasVideo || hasImage) {
         cvs.style.backgroundColor = 'transparent';
     } else {
@@ -603,22 +583,16 @@ function renderCanvas(m) {
             vidPreview.src = targetSrc;
         }
 
-        // 应用缩放
         vidPreview.style.transform = transformCSS;
-        // 关键：Flex布局下，transformOrigin 设为 center 保证缩放后仍居中对齐
         vidPreview.style.transformOrigin = 'center center';
 
-        // 视频尺寸与 Object-Fit 策略
         if (bgFit === 'cover' || bgFit === 'contain') {
-            // 标准模式：占满容器，内部对齐依靠 object-position
             vidPreview.style.width = '100%';
             vidPreview.style.height = '100%';
             vidPreview.style.objectFit = bgFit;
             vidPreview.style.objectPosition = `${alignX} ${alignY}`;
-            // 在此模式下 Flex 父容器的对齐其实不起作用，起作用的是 object-position
         } else {
-            // 自定义/单向填满模式：依靠 Flex 父容器对齐，本身重置 object-fit
-            vidPreview.style.objectFit = 'fill'; // 强制拉伸填满设定的宽高
+            vidPreview.style.objectFit = 'fill';
 
             if (bgFit === 'cover_w') {
                 vidPreview.style.width = '100%';
@@ -633,19 +607,16 @@ function renderCanvas(m) {
         }
 
     } else if (hasImage) {
-        // 图片预览逻辑同理
         vidPreview.style.display = 'none';
         imgPreview.style.display = 'block';
 
-        // 由于 imgPreview 是 100% 100% 的 div，Flex 对其无影响，使用 background-position
         const imgUrl = `url('/raw_assets/backgrounds/${m.background}')`;
         imgPreview.style.backgroundImage = imgUrl;
         imgPreview.style.backgroundRepeat = 'no-repeat';
 
-        // CSS background-position 完美支持各种对齐，不需要 Flex hack
         imgPreview.style.backgroundPosition = `${alignX} ${alignY}`;
         imgPreview.style.transform = transformCSS;
-        imgPreview.style.transformOrigin = `${alignX} ${alignY}`; // 缩放基点跟随对齐
+        imgPreview.style.transformOrigin = `${alignX} ${alignY}`;
         imgPreview.style.width = '100%';
         imgPreview.style.height = '100%';
 
@@ -656,7 +627,6 @@ function renderCanvas(m) {
         else if (bgFit === 'custom') imgPreview.style.backgroundSize = `${m.bg_custom_width}px ${m.bg_custom_height}px`;
     }
 
-    // 3. 渲染 DOM 内容
     let shadowCss = 'none';
     if (m.shadow_enabled) {
         shadowCss = `${m.shadow_offset_x}px ${m.shadow_offset_y}px ${m.shadow_radius}px ${m.shadow_color}`;
@@ -664,8 +634,6 @@ function renderCanvas(m) {
 
     const gfTitle = cssFont(m.title_font);
     const titleAlign = m.title_align || 'center';
-
-    // 使用默认值防止 undefined
     const titleSz = m.title_size || 60;
     const subSz = titleSz * 0.5;
 
@@ -682,7 +650,6 @@ function renderCanvas(m) {
         const gBlur = m.group_blur_radius > 0 ? `backdrop-filter: blur(${m.group_blur_radius}px);` : '';
         const freeMode = g.free_mode === true;
 
-        // 计算高度
         let contentHeight = "auto";
         if (freeMode) {
             let maxBottom = 0;
@@ -694,11 +661,21 @@ function renderCanvas(m) {
 
         const gTitleSz = getStyle(g, 'title_size', 'group_title_size') || 30;
         const gTitleFont = cssFont(getStyle(g, 'title_font', 'group_title_font'));
+        const gSubSz = getStyle(g, 'sub_size', 'group_sub_size') || 18;
+        const gSubFont = cssFont(getStyle(g, 'sub_font', 'group_sub_font'));
+        const gSubColor = getStyle(g, 'sub_color', 'group_sub_color');
+
+        const subAlign = getStyle(g, 'sub_align', 'group_sub_align') || 'bottom';
+        let alignItems = 'flex-end';
+        if (subAlign === 'center') alignItems = 'center';
+        if (subAlign === 'top') alignItems = 'flex-start';
 
         html += `
         <div class="group-wrapper">
-            <div class="group-header-wrap" onclick="openContextEditor('group', ${gIdx}, -1)" style="padding:0 0 10px 10px; cursor:pointer; text-shadow:${shadowCss};">
-                <span style="color:${getStyle(g, 'title_color', 'group_title_color')}; font-family:'${gTitleFont}'; font-size:${gTitleSz}px">${g.title}</span>
+            <div class="group-header-wrap" onclick="openContextEditor('group', ${gIdx}, -1)"
+                 style="padding:0 0 10px 10px; cursor:pointer; text-shadow:${shadowCss}; display:flex; gap:15px; align-items:${alignItems};">
+                <span style="color:${getStyle(g, 'title_color', 'group_title_color')}; font-family:'${gTitleFont}'; font-size:${gTitleSz}px; line-height:1;">${g.title}</span>
+                ${g.subtitle ? `<span style="color:${gSubColor}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1;">${g.subtitle}</span>` : ''}
             </div>
             <div class="group-content-box" style="background-color:${gRgba}; ${gBlur}; height:${contentHeight}; position:relative; ${freeMode ? 'overflow:visible' : gridStyle} border-radius:15px;">`;
 
@@ -785,10 +762,6 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// =============================================================
-//  交互：拖拽与事件
-// =============================================================
-
 function toggleGroupFreeMode(gIdx, isFree) {
     const m = getCurrentMenu();
     m.groups[gIdx].free_mode = isFree;
@@ -842,37 +815,6 @@ function moveGroup(idx, dir) {
     renderAll();
 }
 
-async function uploadFile(type, inp) {
-    const f = inp.files[0];
-    if (!f) return;
-    const d = new FormData();
-    d.append("type", type);
-    d.append("file", f);
-    try {
-        const res = await api("/upload", "POST", d);
-        alert("上传成功");
-        await loadAssets();
-        if (type === 'font') initFonts();
-
-        const m = getCurrentMenu();
-        if (type === 'video' && res.filename) {
-            m.bg_video = res.filename;
-        } else if (type === 'background' && res.filename) {
-            m.background = res.filename;
-        }
-
-        renderAll();
-
-        if (type === 'icon' && selectedItem.gIdx !== -1) {
-            openContextEditor('item', selectedItem.gIdx, selectedItem.iIdx);
-        }
-        if (type === 'widget_img' && selectedWidgetIdx !== -1) {
-            updateWidgetEditor(getCurrentMenu());
-        }
-
-    } catch (e) { alert("上传失败!"); } finally { inp.value = ""; }
-}
-
 function addWidget(type) {
     const m = getCurrentMenu();
     if (!m.custom_widgets) m.custom_widgets = [];
@@ -907,7 +849,7 @@ function updateWidgetEditor(m) {
         document.getElementById("wEdit-image").style.display = "none";
         document.getElementById("wEdit-text").style.display = "block";
         setValue("widText", w.text);
-        setValue("widSize", w.size || 40); // 修复默认值
+        setValue("widSize", w.size || 40);
         setValue("widColor", w.color || "#FFFFFF");
         renderSelect("widFontSelect", appState.assets.fonts, w.font || "", "默认字体");
     }
@@ -922,31 +864,39 @@ function deleteWidget() {
     }
 }
 
-function updateMenuMeta(key, val) {
+function updateProp(type, gIdx, iIdx, key, val) {
     const m = getCurrentMenu();
-    if(['layout_columns', 'canvas_width', 'canvas_height', 'group_blur_radius', 'item_blur_radius', 'group_bg_alpha', 'item_bg_alpha', 'shadow_offset_x', 'shadow_offset_y', 'shadow_radius', 'bg_custom_width', 'bg_custom_height', 'video_fps'].includes(key)) {
-        m[key] = parseInt(val);
-    } else if (key === 'use_canvas_size' || key === 'shadow_enabled') {
-        m[key] = val === 'true' || val === true;
-    } else if (['export_scale', 'video_start', 'video_end', 'video_scale'].includes(key)) {
-        m[key] = parseFloat(val);
+    let obj;
+    if (type === 'title') { obj = m; }
+    else if (type === 'group') { obj = m.groups[gIdx]; }
+    else { obj = m.groups[gIdx].items[iIdx]; }
+
+    if (val === "") {
+        delete obj[key];
     } else {
-        m[key] = val;
+        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height'].includes(key)) {
+            val = parseInt(val);
+        }
+        obj[key] = val;
     }
-    renderAll();
+
+    if (key === 'icon') {
+        openContextEditor(type, gIdx, iIdx);
+    } else {
+        renderCanvas(m);
+    }
 }
 
-function updateBg(val) {
-    updateMenuMeta('background', val);
+function deleteCurrentItemProp(gIdx, iIdx) {
+    if (confirm("确定删除此项？")) {
+        getCurrentMenu().groups[gIdx].items.splice(iIdx, 1);
+        clearSelection();
+    }
 }
 
-function updateColor(key, val, src) { if (src === 'text' && !val.startsWith('#')) val = '#' + val; updateMenuMeta(key, val); }
 function initFonts() { (appState.assets.fonts || []).forEach(n => { const id="f-"+n; if(!document.getElementById(id)) { const s=document.createElement("style"); s.id=id; s.textContent=`@font-face { font-family: '${cssFont(n)}'; src: url('/fonts/${n}'); }`; document.head.appendChild(s); } }); }
 function cssFont(n) { return n ? n.replace(/[^a-zA-Z0-9_]/g, '_') : 'sans-serif'; }
 
-const get_style = getStyle;
-
-// --- 新增：自动填充逻辑 ---
 async function openAutoFillModal() {
     const modal = document.getElementById('autoFillModal');
     const listEl = document.getElementById('pluginList');
@@ -972,7 +922,6 @@ function renderAutoFillList(data) {
         return;
     }
 
-    // 排序插件名
     const sortedPlugins = Object.keys(data).sort();
 
     sortedPlugins.forEach(pluginName => {
@@ -982,7 +931,6 @@ function renderAutoFillList(data) {
         const groupDiv = document.createElement('div');
         groupDiv.style.marginBottom = '10px';
 
-        // 插件标题 + 全选框
         const header = document.createElement('div');
         header.style.background = '#333';
         header.style.padding = '5px 10px';
@@ -1010,7 +958,6 @@ function renderAutoFillList(data) {
         header.appendChild(label);
         groupDiv.appendChild(header);
 
-        // 指令列表
         const cmdsDiv = document.createElement('div');
         cmdsDiv.style.paddingLeft = '20px';
         cmdsDiv.style.display = 'grid';
@@ -1052,7 +999,7 @@ function confirmAutoFill() {
     const selectedData = [];
 
     checks.forEach(chk => {
-        if (chk.value) { // 排除插件标题的全选框 (没有 value)
+        if (chk.value) {
             try {
                 selectedData.push(JSON.parse(chk.value));
             } catch(e){}
@@ -1064,7 +1011,6 @@ function confirmAutoFill() {
         return;
     }
 
-    // 按插件分组整理数据
     const grouped = {};
     selectedData.forEach(item => {
         if (!grouped[item.p]) grouped[item.p] = [];
@@ -1074,13 +1020,12 @@ function confirmAutoFill() {
     const m = getCurrentMenu();
     let addedCount = 0;
 
-    // 为每个插件创建一个新分组
     for (const [pluginName, cmds] of Object.entries(grouped)) {
         const newGroup = {
             title: pluginName,
             subtitle: "Plugin Commands",
             items: [],
-            free_mode: false // 自动填充默认使用 Grid 模式
+            free_mode: false
         };
 
         cmds.forEach(c => {
@@ -1088,7 +1033,7 @@ function confirmAutoFill() {
                 name: c.cmd,
                 desc: c.desc || "...",
                 icon: "",
-                x: 0, y: 0, w: 200, h: 80 // Grid 模式下 xy 无效，但给个默认值
+                x: 0, y: 0, w: 200, h: 80
             });
             addedCount++;
         });
@@ -1100,10 +1045,6 @@ function confirmAutoFill() {
     renderAll();
     alert(`✅ 已成功导入 ${addedCount} 个指令到新分组！`);
 }
-
-// -------------------------------------------------------------
-//  上下文属性编辑表单 (Prop Panel)
-// -------------------------------------------------------------
 
 function clearSelection() {
     selectedItem = { gIdx: -1, iIdx: -1 };
@@ -1220,6 +1161,20 @@ function generatePropForm(type, obj, gIdx, iIdx) {
     } else if (type === 'group') {
         html += input("分组标题", "title", obj.title);
         html += input("副标题", "subtitle", obj.subtitle);
+
+        const currentAlign = obj.sub_align || "";
+        const globalAlign = getCurrentMenu().group_sub_align || "bottom";
+        html += `
+        <div class="form-row">
+            <label>副标题对齐方式 <span style="font-size:10px;color:#aaa">(${obj.sub_align ? '私有' : '全局:'+globalAlign})</span></label>
+            <select onchange="updateProp('${type}', ${gIdx}, ${iIdx}, 'sub_align', this.value)">
+                <option value="">-- 继承 --</option>
+                <option value="bottom" ${currentAlign==='bottom'?'selected':''}>底对齐 (Bottom)</option>
+                <option value="center" ${currentAlign==='center'?'selected':''}>居中 (Center)</option>
+                <option value="top" ${currentAlign==='top'?'selected':''}>顶对齐 (Top)</option>
+            </select>
+        </div>`;
+
         html += input("每行列数 (Grid模式)", "layout_columns", obj.layout_columns, "number", "placeholder='默认跟随全局'");
         html += `<div class="form-row" style="background:#333;padding:10px;border-radius:4px;margin-top:10px;display:flex;align-items:center;justify-content:space-between">
             <label style="margin:0">✨ 自由排版模式</label>
@@ -1273,40 +1228,6 @@ function generatePropForm(type, obj, gIdx, iIdx) {
     return html;
 }
 
-function updateProp(type, gIdx, iIdx, key, val) {
-    const m = getCurrentMenu();
-    let obj;
-    if (type === 'title') { obj = m; }
-    else if (type === 'group') { obj = m.groups[gIdx]; }
-    else { obj = m.groups[gIdx].items[iIdx]; }
-
-    if (val === "") {
-        delete obj[key];
-    } else {
-        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height'].includes(key)) {
-            val = parseInt(val);
-        }
-        obj[key] = val;
-    }
-
-    if (key === 'icon') {
-        openContextEditor(type, gIdx, iIdx);
-    } else {
-        renderCanvas(m);
-    }
-}
-
-function deleteCurrentItemProp(gIdx, iIdx) {
-    if (confirm("确定删除此项？")) {
-        getCurrentMenu().groups[gIdx].items.splice(iIdx, 1);
-        clearSelection();
-    }
-}
-
-// =============================================================
-//  全局鼠标事件 (Global Dragging)
-// =============================================================
-
 function initItemDrag(e, gIdx, iIdx, mode) {
     if (e.button !== 0) return;
     const m = getCurrentMenu();
@@ -1314,7 +1235,6 @@ function initItemDrag(e, gIdx, iIdx, mode) {
     if (!grp.free_mode) return;
     e.stopPropagation();
 
-    // 选中
     openContextEditor('item', gIdx, iIdx);
 
     const item = grp.items[iIdx];
@@ -1373,7 +1293,6 @@ function handleGlobalMouseMove(e) {
         } else return;
     }
 
-    // 防止选中文字
     e.preventDefault();
 
     if (!rafLock) {
@@ -1388,7 +1307,6 @@ function handleGlobalMouseMove(e) {
             else obj = m.custom_widgets[dragData.targetIdx];
 
             if (dragData.mode === 'move') {
-                // 简单的吸附逻辑：10px
                 let nx = dragData.initialVals.x + dx;
                 let ny = dragData.initialVals.y + dy;
                 if (Math.abs(nx) < 10) nx = 0;
@@ -1400,7 +1318,6 @@ function handleGlobalMouseMove(e) {
                 dragData.cachedEl.style.left = obj.x + "px";
                 dragData.cachedEl.style.top = obj.y + "px";
             } else {
-                // resize
                 let nw = dragData.initialVals.w + dx;
                 let nh = dragData.initialVals.h + dy;
                 if (nw < 20) nw = 20;
@@ -1428,7 +1345,6 @@ function handleGlobalMouseUp(e) {
         dragData.active = false;
         dragData.isDragging = false;
         dragData.cachedEl = null;
-        // 拖拽结束，触发一次完全重绘以保存状态/更新关联UI
         renderCanvas(getCurrentMenu());
         if (dragData.type === 'widget') updateWidgetEditor(getCurrentMenu());
         else if (dragData.type === 'item') openContextEditor('item', dragData.gIdx, dragData.iIdx);
@@ -1436,15 +1352,12 @@ function handleGlobalMouseUp(e) {
 }
 
 function handleKeyDown(e) {
-    // 删除快捷键
     if (e.key === 'Delete' || e.key === 'Backspace') {
-        // 如果正在输入框中，不处理
         if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
 
         if (selectedWidgetIdx !== -1) deleteWidget();
         else if (selectedItem.gIdx !== -1) deleteCurrentItemProp(selectedItem.gIdx, selectedItem.iIdx);
     }
-    // 方向键微调 (仅当选中元素时)
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
         if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
         e.preventDefault();

@@ -115,9 +115,13 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, sca
     line_spacing = int(4 * scale)
 
     try:
-        name_h = name_font.getbbox(name)[3] - name_font.getbbox(name)[1] if name and hasattr(name_font,
-                                                                                             "getbbox") else (
-            name_font.getsize(name)[1] if name else 0)
+        if name and hasattr(name_font, "getbbox"):
+            bbox = name_font.getbbox(name)
+            name_h = bbox[3] - bbox[1]
+        elif name:
+            name_h = name_font.getsize(name)[1]
+        else:
+            name_h = 0
     except:
         name_h = 20
     try:
@@ -146,19 +150,10 @@ def get_style(obj: dict, menu: dict, key: str, fallback_key: str, default=None):
     return val if val is not None and val != "" else menu.get(fallback_key, default)
 
 
-# ==================================================================================
-# SHARED: Universal Background Layout Calculator
-# ==================================================================================
 def _calculate_bg_layout(src_w: int, src_h: int, canvas_w: int, canvas_h: int,
                          fit_mode: str, scale: float, align_x: str, align_y: str,
                          custom_w: int = 0, custom_h: int = 0) -> Tuple[int, int, int, int]:
-    """
-    统一计算背景图的尺寸和位置
-    """
-    # 1. 计算基础尺寸 (Base Size)
     base_w, base_h = src_w, src_h
-
-    # 强转字符串并清理，防止 None 或 case 问题
     ax = str(align_x or "center").lower().strip()
     ay = str(align_y or "center").lower().strip()
 
@@ -169,56 +164,49 @@ def _calculate_bg_layout(src_w: int, src_h: int, canvas_w: int, canvas_h: int,
         canvas_ratio = canvas_w / canvas_h if canvas_h > 0 else 1
 
         if fit_mode == "contain":
-            if src_ratio > canvas_ratio:  # 图片更宽，定宽补高
+            if src_ratio > canvas_ratio:
                 base_w = canvas_w
                 base_h = int(canvas_w / src_ratio)
-            else:  # 图片更高，定高补宽
+            else:
                 base_h = canvas_h
                 base_w = int(canvas_h * src_ratio)
 
-        elif fit_mode == "cover_w":  # 宽度撑满，高度随比例
+        elif fit_mode == "cover_w":
             base_w = canvas_w
             base_h = int(canvas_w / src_ratio)
 
-        elif fit_mode == "cover_h":  # 高度撑满，宽度随比例
+        elif fit_mode == "cover_h":
             base_h = canvas_h
             base_w = int(canvas_h * src_ratio)
 
-        else:  # "cover" (Default) - 智能填满
+        else:
             if src_ratio > canvas_ratio:
-                # 图片比画布更宽 -> 按高度填满，截取两边
                 base_h = canvas_h
                 base_w = int(canvas_h * src_ratio)
             else:
-                # 图片比画布更高 -> 按宽度填满，截取上下
                 base_w = canvas_w
                 base_h = int(canvas_w / src_ratio)
 
-    # 2. 应用缩放 (Scale)
     final_w = int(base_w * scale)
     final_h = int(base_h * scale)
 
-    # 3. 计算对齐 (Alignment)
     if ax == "left":
         px = 0
     elif ax == "right":
         px = canvas_w - final_w
-    else:  # center
+    else:
         px = (canvas_w - final_w) // 2
 
     if ay == "top":
         py = 0
     elif ay == "bottom":
         py = canvas_h - final_h
-    else:  # center
+    else:
         py = (canvas_h - final_h) // 2
 
     return final_w, final_h, px, py
 
 
-# ==================================================================================
-# LAYER 1: Layout Calculation
-# ==================================================================================
 def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     scale = float(menu_data.get("export_scale", 1.0))
     if scale <= 0: scale = 1.0
@@ -305,22 +293,55 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
         draw_glass_rect(overlay, g_info["box_rect"], get_style(grp, menu_data, 'bg_color', 'group_bg_color', '#000000'),
                         get_style(grp, menu_data, 'bg_alpha', 'group_bg_alpha', 50),
                         menu_data.get("group_blur_radius", 0), corner_r=s(15))
+
         gtf = load_font(get_style(grp, menu_data, 'title_font', 'group_title_font', 'text.ttf'),
                         s(int(get_style(grp, menu_data, 'title_size', 'group_title_size', 30))))
         gsf = load_font(get_style(grp, menu_data, 'sub_font', 'group_sub_font', 'text.ttf'),
                         s(int(get_style(grp, menu_data, 'sub_size', 'group_sub_size', 18))))
+
+        title_text = grp.get("title", "")
+        sub_text = grp.get("subtitle", "")
         ty = g_info["title_y"] + s(10)
-        draw_text_with_shadow(draw_ov, (bx + s(10), ty), grp.get("title", ""), gtf,
+        title_x = bx + s(10)
+
+        draw_text_with_shadow(draw_ov, (title_x, ty), title_text, gtf,
                               hex_to_rgb(get_style(grp, menu_data, 'title_color', 'group_title_color', '#FFFFFF')),
                               shadow_cfg, scale=scale)
-        if grp.get("subtitle"):
+
+        if sub_text:
             try:
-                tw = draw_ov.textlength(grp.get("title", ""), font=gtf)
+                if hasattr(draw_ov, "textbbox"):
+                    bbox = draw_ov.textbbox((0, 0), title_text, font=gtf)
+                    title_w = bbox[2] - bbox[0]
+                    title_h = bbox[3] - bbox[1]
+                else:
+                    title_w, title_h = draw_ov.textsize(title_text, font=gtf)
             except:
-                tw = 100
-            draw_text_with_shadow(draw_ov, (bx + s(20) + tw, ty + (s(30) - s(18)) / 2), grp.get("subtitle", ""), gsf,
+                title_w, title_h = 100, 30
+
+            try:
+                if hasattr(draw_ov, "textbbox"):
+                    s_bbox = draw_ov.textbbox((0, 0), sub_text, font=gsf)
+                    sub_h = s_bbox[3] - s_bbox[1]
+                else:
+                    _, sub_h = draw_ov.textsize(sub_text, font=gsf)
+            except:
+                sub_h = 18
+
+            align = get_style(grp, menu_data, 'sub_align', 'group_sub_align', 'bottom')
+
+            sub_x = title_x + title_w + s(15)
+            sub_y = ty
+
+            if align == 'bottom':
+                sub_y = ty + title_h - sub_h - s(2)
+            elif align == 'center':
+                sub_y = ty + (title_h - sub_h) / 2
+
+            draw_text_with_shadow(draw_ov, (sub_x, sub_y), sub_text, gsf,
                                   hex_to_rgb(get_style(grp, menu_data, 'sub_color', 'group_sub_color', '#AAAAAA')),
                                   shadow_cfg, scale=scale)
+
         item_grid_w = (bw - s(40) - (g_info["columns"] - 1) * ITEM_GAP_X) // g_info["columns"]
         for i, item in enumerate(grp.get("items", [])):
             if g_info["is_free"]:
@@ -361,9 +382,6 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     return overlay
 
 
-# ==================================================================================
-# LAYER 2: Static Renderer (Returns RGBA Image for PNG)
-# ==================================================================================
 def render_static(menu_data: dict) -> Image.Image:
     layout_img = _render_layout(menu_data, is_video_mode=False)
     fw, fh = layout_img.size
@@ -380,31 +398,19 @@ def render_static(menu_data: dict) -> Image.Image:
     if (bg_name := menu_data.get("background")) and plugin_storage.bg_dir:
         try:
             with Image.open(plugin_storage.bg_dir / bg_name).convert("RGBA") as bg_img:
-
-                # Fetch params - Default fit_mode changed to "cover" to match frontend
                 fit_mode = menu_data.get("bg_fit_mode", "cover")
-
-                # Fetch params - Align defaults changed to "center"
                 align_x = menu_data.get("bg_align_x", "center")
                 align_y = menu_data.get("bg_align_y", "center")
-
-                # Use video_scale/bg_scale if available
                 bg_scale = float(menu_data.get("video_scale", 1.0))
-
                 custom_w = s(int(menu_data.get("bg_custom_width", 1000)))
                 custom_h = s(int(menu_data.get("bg_custom_height", 1000)))
 
-                # Calculate geometry
                 new_w, new_h, px, py = _calculate_bg_layout(
                     bg_img.width, bg_img.height, fw, fh,
                     fit_mode, bg_scale, align_x, align_y,
                     custom_w, custom_h
                 )
-
-                # Resize (LANCZOS for static quality)
                 bg_rz = bg_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-                # Paste
                 final_img.paste(bg_rz, (px, py), bg_rz)
         except Exception as e:
             logger.error(f"Static BG Error: {e}")
@@ -413,9 +419,6 @@ def render_static(menu_data: dict) -> Image.Image:
     return final_img
 
 
-# ==================================================================================
-# LAYER 3: Animated Renderer (Streams to file)
-# ==================================================================================
 def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
     writer = None
     reader = None
@@ -436,7 +439,6 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
         frame_ratio = max(1, int(menu_data.get("video_frame_ratio", 1)))
 
         bg_scale_factor = float(menu_data.get("video_scale", 1.0))
-
         fps_mode = menu_data.get("video_fps_mode", "fixed")
 
         reader = imageio.get_reader(str(video_path))
@@ -475,11 +477,7 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
         else:
             writer_kwargs = {'fps': target_fps}
 
-        # Config params - Fix logic to fallback to generic BG params if video params missing
-        fit_mode = menu_data.get("bg_fit_mode", "cover")  # Changed default to 'cover'
-
-        # FALLBACK LOGIC: If video_align_x/align missing, try bg_align_x/y
-        # Added .get("video_align_y") check for legacy compatibility
+        fit_mode = menu_data.get("bg_fit_mode", "cover")
         align_x = menu_data.get("video_align_x") or menu_data.get("bg_align_x", "center")
         align_y = menu_data.get("video_align") or menu_data.get("video_align_y") or menu_data.get("bg_align_y",
                                                                                                   "center")

@@ -1469,38 +1469,32 @@ function handleKeyDown(e) {
 }
 
 // =============================================================
-//  随机背景功能
-// =============================================================
-//  通用图片选择器（带预览）
+//  通用图片选择器（完全模仿随机背景逻辑）
 // =============================================================
 
 let imagePickerCallback = null;
-let imagePickerType = '';
+let imagePickerCurrentValue = '';
 
 function openImagePicker(type, currentValue, callback) {
     imagePickerCallback = callback;
-    imagePickerType = type;
+    imagePickerCurrentValue = currentValue;
     
     let images = [];
     let basePath = '';
     let title = '选择图片';
     
-    switch(type) {
-        case 'background':
-            images = appState.assets.backgrounds || [];
-            basePath = '/raw_assets/backgrounds/';
-            title = '🖼️ 选择背景图片';
-            break;
-        case 'icon':
-            images = appState.assets.icons || [];
-            basePath = '/raw_assets/icons/';
-            title = '🎯 选择图标';
-            break;
-        case 'widget':
-            images = appState.assets.widget_imgs || [];
-            basePath = '/raw_assets/widgets/';
-            title = '🧩 选择组件图片';
-            break;
+    if (type === 'background') {
+        images = appState.assets.backgrounds || [];
+        basePath = '/raw_assets/backgrounds/';
+        title = '选择背景图片';
+    } else if (type === 'icon') {
+        images = appState.assets.icons || [];
+        basePath = '/raw_assets/icons/';
+        title = '选择图标';
+    } else if (type === 'widget') {
+        images = appState.assets.widget_imgs || [];
+        basePath = '/raw_assets/widgets/';
+        title = '选择组件图片';
     }
     
     const modal = document.getElementById('imagePickerModal');
@@ -1519,29 +1513,30 @@ function openImagePicker(type, currentValue, callback) {
     // 添加"无"选项
     const noneItem = document.createElement('div');
     noneItem.className = 'image-picker-item' + (!currentValue ? ' selected' : '');
-    noneItem.onclick = () => selectImage('');
     noneItem.innerHTML = `
         <div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;background:#333;border-radius:4px;color:#666;font-size:24px;">✕</div>
         <span>无</span>
     `;
+    noneItem.onclick = function() { doSelectImage(''); };
     container.appendChild(noneItem);
     
-    images.forEach(img => {
+    // 添加所有图片选项
+    images.forEach(function(img) {
         const isSelected = img === currentValue;
         const item = document.createElement('div');
         item.className = 'image-picker-item' + (isSelected ? ' selected' : '');
-        item.onclick = () => selectImage(img);
         item.innerHTML = `
-            <img src="${basePath}${img}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22%23333%22 width=%2280%22 height=%2280%22/><text x=%2240%22 y=%2245%22 text-anchor=%22middle%22 fill=%22%23666%22>Error</text></svg>'">
+            <img src="${basePath}${img}" style="width:80px;height:80px;object-fit:cover;border-radius:4px;">
             <span title="${img}">${img.length > 12 ? img.substring(0, 10) + '...' : img}</span>
         `;
+        item.onclick = function() { doSelectImage(img); };
         container.appendChild(item);
     });
     
     modal.style.display = 'flex';
 }
 
-function selectImage(value) {
+function doSelectImage(value) {
     if (imagePickerCallback) {
         imagePickerCallback(value);
     }
@@ -1555,7 +1550,7 @@ function closeImagePicker() {
 }
 
 // =============================================================
-//  带预览的选择器渲染函数
+//  带预览的选择器渲染（用于侧边栏）
 // =============================================================
 
 function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
@@ -1563,11 +1558,9 @@ function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
     if (!container) return;
     
     let basePath = '';
-    switch(type) {
-        case 'background': basePath = '/raw_assets/backgrounds/'; break;
-        case 'icon': basePath = '/raw_assets/icons/'; break;
-        case 'widget': basePath = '/raw_assets/widgets/'; break;
-    }
+    if (type === 'background') basePath = '/raw_assets/backgrounds/';
+    else if (type === 'icon') basePath = '/raw_assets/icons/';
+    else if (type === 'widget') basePath = '/raw_assets/widgets/';
     
     container.innerHTML = '';
     
@@ -1579,7 +1572,6 @@ function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
         const img = document.createElement('img');
         img.src = basePath + currentValue;
         img.style.cssText = 'width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;';
-        img.onerror = function() { this.style.display = 'none'; };
         wrapper.appendChild(img);
     } else {
         const placeholder = document.createElement('div');
@@ -1600,9 +1592,9 @@ function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
     arrow.innerText = '▼';
     wrapper.appendChild(arrow);
     
-    // 点击事件 - 关键修复：使用 JS 绑定而不是 onclick 字符串
-    wrapper.onclick = () => {
-        openImagePicker(type, currentValue || '', (selectedValue) => {
+    // 点击打开选择器
+    wrapper.onclick = function() {
+        openImagePicker(type, currentValue || '', function(selectedValue) {
             onChangeCallback(selectedValue);
         });
     };

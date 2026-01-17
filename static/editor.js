@@ -1237,7 +1237,7 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
 
-        // 使用带预览的图标选择器
+        // 图标选择器 - 使用全局函数调用
         const iconPreview = obj.icon ? 
             `<img src="/raw_assets/icons/${obj.icon}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;">` :
             `<div style="width:32px;height:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;">无</div>`;
@@ -1245,7 +1245,7 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         <div class="form-row">
             <label>图标</label>
             <div style="display:flex; gap:5px; align-items:center;">
-                <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;" onclick="openImagePicker('icon', '${obj.icon || ''}', (v) => { updateProp('item', ${gIdx}, ${iIdx}, 'icon', v); openContextEditor('item', ${gIdx}, ${iIdx}); })">
+                <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;" onclick="openIconPicker(${gIdx}, ${iIdx}, '${obj.icon || ''}')">
                     ${iconPreview}
                     <span style="flex:1;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${obj.icon || '点击选择...'}</span>
                     <span style="color:#888;font-size:14px;">▼</span>
@@ -1547,6 +1547,26 @@ function doSelectImage(value) {
 function closeImagePicker() {
     document.getElementById('imagePickerModal').style.display = 'none';
     imagePickerCallback = null;
+}
+
+// 专用选择器函数（用于 HTML onclick 调用）
+function openIconPicker(gIdx, iIdx, currentIcon) {
+    openImagePicker('icon', currentIcon, function(v) {
+        updateProp('item', gIdx, iIdx, 'icon', v);
+        openContextEditor('item', gIdx, iIdx);
+    });
+}
+
+function openBgPicker(currentBg) {
+    openImagePicker('background', currentBg, function(v) {
+        updateBg(v);
+    });
+}
+
+function openWidgetImgPicker(currentImg) {
+    openImagePicker('widget', currentImg, function(v) {
+        updateWidget('content', v);
+    });
 }
 
 // =============================================================

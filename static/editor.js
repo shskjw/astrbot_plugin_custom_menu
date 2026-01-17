@@ -1569,17 +1569,45 @@ function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
         case 'widget': basePath = '/raw_assets/widgets/'; break;
     }
     
-    const preview = currentValue ? 
-        `<img src="${basePath}${currentValue}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;">` :
-        `<div style="width:32px;height:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;">无</div>`;
+    container.innerHTML = '';
     
-    container.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;" onclick="openImagePicker('${type}', '${currentValue || ''}', (v) => { ${onChangeCallback}(v); })">
-            ${preview}
-            <span style="flex:1;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${currentValue || '点击选择...'}</span>
-            <span style="color:#888;font-size:14px;">▼</span>
-        </div>
-    `;
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;';
+    
+    // 预览图
+    if (currentValue) {
+        const img = document.createElement('img');
+        img.src = basePath + currentValue;
+        img.style.cssText = 'width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;';
+        img.onerror = function() { this.style.display = 'none'; };
+        wrapper.appendChild(img);
+    } else {
+        const placeholder = document.createElement('div');
+        placeholder.style.cssText = 'width:32px;height:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;';
+        placeholder.innerText = '无';
+        wrapper.appendChild(placeholder);
+    }
+    
+    // 文本
+    const text = document.createElement('span');
+    text.style.cssText = 'flex:1;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    text.innerText = currentValue || '点击选择...';
+    wrapper.appendChild(text);
+    
+    // 箭头
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'color:#888;font-size:14px;';
+    arrow.innerText = '▼';
+    wrapper.appendChild(arrow);
+    
+    // 点击事件 - 关键修复：使用 JS 绑定而不是 onclick 字符串
+    wrapper.onclick = () => {
+        openImagePicker(type, currentValue || '', (selectedValue) => {
+            onChangeCallback(selectedValue);
+        });
+    };
+    
+    container.appendChild(wrapper);
 }
 
 // =============================================================

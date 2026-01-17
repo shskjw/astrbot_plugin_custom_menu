@@ -328,7 +328,10 @@
 <div id="imagePickerModal" class="modal-overlay">
     <div class="modal" style="width: 600px;">
         <h3 id="imagePickerTitle">选择图片</h3>
-        <div id="imagePickerGrid" style="max-height: 400px; overflow-y: auto; margin: 15px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;">
+        <div style="margin-bottom: 10px;">
+            <input type="text" id="imagePickerSearch" placeholder="🔍 搜索图片名称..." oninput="filterImagePicker(this.value)" style="width:100%; padding:8px 12px; border-radius:4px; border:1px solid #444; background:#2a2a2a; color:#fff;">
+        </div>
+        <div id="imagePickerGrid" style="max-height: 350px; overflow-y: auto; margin: 10px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;">
         </div>
         <div style="display:flex; justify-content: flex-end; gap: 10px;">
             <button class="btn btn-secondary" onclick="closeImagePicker()">取消</button>
@@ -336,6 +339,6 @@
     </div>
 </div>
 
-<script src="/static/editor.js?v=1.9.1"></script>
+<script src="/static/editor.js?v=1.9.2"></script>
 </body>
 </html>

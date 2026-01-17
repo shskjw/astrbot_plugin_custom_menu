@@ -1474,6 +1474,8 @@ function handleKeyDown(e) {
 
 let imagePickerCallback = null;
 let imagePickerCurrentValue = '';
+let imagePickerImages = [];  // 缓存当前图片列表
+let imagePickerBasePath = '';  // 缓存当前路径
 
 function openImagePicker(type, currentValue, callback) {
     imagePickerCallback = callback;
@@ -1497,20 +1499,34 @@ function openImagePicker(type, currentValue, callback) {
         title = '选择组件图片';
     }
     
+    // 缓存用于搜索
+    imagePickerImages = images;
+    imagePickerBasePath = basePath;
+    
     const modal = document.getElementById('imagePickerModal');
     const container = document.getElementById('imagePickerGrid');
     const titleEl = document.getElementById('imagePickerTitle');
+    const searchInput = document.getElementById('imagePickerSearch');
     
     titleEl.innerText = title;
+    if (searchInput) searchInput.value = '';  // 清空搜索框
+    
+    // 渲染图片列表
+    renderImagePickerGrid(images, basePath, currentValue);
+    
+    modal.style.display = 'flex';
+}
+
+function renderImagePickerGrid(images, basePath, currentValue) {
+    const container = document.getElementById('imagePickerGrid');
     container.innerHTML = '';
     
-    if (images.length === 0) {
+    if (images.length === 0 && imagePickerImages.length === 0) {
         container.innerHTML = '<div style="color:#888; text-align:center; grid-column:1/-1; padding:40px;">暂无图片，请先上传</div>';
-        modal.style.display = 'flex';
         return;
     }
     
-    // 添加"无"选项
+    // 添加"无"选项（只在未搜索或搜索为空时显示）
     const noneItem = document.createElement('div');
     noneItem.className = 'image-picker-item' + (!currentValue ? ' selected' : '');
     noneItem.innerHTML = `
@@ -1519,6 +1535,14 @@ function openImagePicker(type, currentValue, callback) {
     `;
     noneItem.onclick = function() { doSelectImage(''); };
     container.appendChild(noneItem);
+    
+    if (images.length === 0) {
+        const noResult = document.createElement('div');
+        noResult.style.cssText = 'color:#888; text-align:center; grid-column:1/-1; padding:20px;';
+        noResult.innerText = '没有匹配的图片';
+        container.appendChild(noResult);
+        return;
+    }
     
     // 添加所有图片选项
     images.forEach(function(img) {
@@ -1532,8 +1556,20 @@ function openImagePicker(type, currentValue, callback) {
         item.onclick = function() { doSelectImage(img); };
         container.appendChild(item);
     });
-    
-    modal.style.display = 'flex';
+}
+
+function filterImagePicker(keyword) {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) {
+        // 空搜索，显示全部
+        renderImagePickerGrid(imagePickerImages, imagePickerBasePath, imagePickerCurrentValue);
+        return;
+    }
+    // 过滤匹配的图片
+    const filtered = imagePickerImages.filter(function(img) {
+        return img.toLowerCase().indexOf(kw) !== -1;
+    });
+    renderImagePickerGrid(filtered, imagePickerBasePath, imagePickerCurrentValue);
 }
 
 function doSelectImage(value) {

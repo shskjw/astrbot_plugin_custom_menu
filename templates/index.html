@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>菜单编辑器 v1.8.6</title>
+    <title>菜单编辑器 v1.9.0</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link rel="stylesheet" href="/static/style.css?v=1.8.6">
+    <link rel="stylesheet" href="/static/style.css?v=1.9.0">
 </head>
 <body>
 
@@ -150,11 +150,10 @@
                 <!-- 图片专用面板 -->
                 <div id="panel-bg-image">
                     <div class="form-row">
-                        <label>选择图片</label>
-                        <div style="display:flex; gap:5px;">
-                            <select id="bgSelect" onchange="updateBg(this.value)" style="flex:1"></select>
-                            <button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()">⬆</button>
-                            <!-- multiple -->
+                        <label>选择背景图片</label>
+                        <div style="display:flex; gap:5px; align-items:center;">
+                            <div id="bgSelectPreview" style="flex:1;"></div>
+                            <button class="btn btn-secondary" onclick="document.getElementById('bgUp').click()" title="上传新背景">⬆</button>
                             <input type="file" id="bgUp" hidden multiple onchange="uploadFile('background', this)">
                         </div>
                     </div>
@@ -271,11 +270,12 @@
                         </div>
                     </div>
                     <div id="wEdit-image" style="display:none">
-                        <div style="display:flex;gap:5px"><select id="widImgSelect" onchange="updateWidget('content', this.value)" style="flex:1"></select><button class="btn btn-secondary" onclick="document.getElementById('widImgUp').click()">⬆</button>
-                        <!-- multiple -->
-                        <input type="file" id="widImgUp" hidden multiple onchange="uploadFile('widget_img', this)">
+                        <div style="display:flex;gap:5px;align-items:center;">
+                            <div id="widImgSelectPreview" style="flex:1;"></div>
+                            <button class="btn btn-secondary" onclick="document.getElementById('widImgUp').click()">⬆</button>
+                            <input type="file" id="widImgUp" hidden multiple onchange="uploadFile('widget_img', this)">
                         </div>
-                        <div style="display:flex;gap:5px;margin-top:5px"><input type="number" id="widW" oninput="updateWidget('width', this.value)"><input type="number" id="widH" oninput="updateWidget('height', this.value)"></div>
+                        <div style="display:flex;gap:5px;margin-top:5px"><input type="number" id="widW" oninput="updateWidget('width', this.value)" placeholder="宽度"><input type="number" id="widH" oninput="updateWidget('height', this.value)" placeholder="高度"></div>
                     </div>
                     <button class="btn btn-danger btn-block" style="margin-top:5px" onclick="deleteWidget()">删除组件</button>
                 </div>
@@ -324,6 +324,18 @@
     </div>
 </div>
 
-<script src="/static/editor.js?v=1.8.6"></script>
+<!-- 通用图片选择器弹窗 -->
+<div id="imagePickerModal" class="modal-overlay">
+    <div class="modal" style="width: 600px;">
+        <h3 id="imagePickerTitle">选择图片</h3>
+        <div id="imagePickerGrid" style="max-height: 400px; overflow-y: auto; margin: 15px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;">
+        </div>
+        <div style="display:flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" onclick="closeImagePicker()">取消</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/editor.js?v=1.9.0"></script>
 </body>
 </html>

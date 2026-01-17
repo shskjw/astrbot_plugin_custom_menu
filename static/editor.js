@@ -137,50 +137,90 @@ function getStyle(obj, key, fallbackGlobalKey) {
 
 // --- 修复提示逻辑：上传文件 ---
 async function uploadFile(type, inp) {
-    const files = inp.files;
-    if (!files || files.length === 0) return;
+    const files = Array.from(inp.files || []);
+    if (files.length === 0) return;
 
     let successCount = 0;
     let failCount = 0;
+    const failedFiles = [];
 
-    const originalText = inp.previousElementSibling ? inp.previousElementSibling.innerText : '';
-    if(inp.previousElementSibling) inp.previousElementSibling.innerText = "⏳...";
-
-    for (let i = 0; i < files.length; i++) {
-        const f = files[i];
+    // 找到显示状态的按钮
+    const btn = inp.previousElementSibling;
+    const originalText = btn ? btn.innerText : '';
+    
+    // 使用 Promise.all 并行上传所有文件以提高效率
+    const uploadPromises = files.map(async (f, idx) => {
+        if (btn) btn.innerText = `⏳ ${idx + 1}/${files.length}`;
+        
         const d = new FormData();
         d.append("type", type);
         d.append("file", f);
 
         try {
-            const res = await api("/upload", "POST", d);
-            successCount++;
-
-            if (files.length === 1) {
+            const res = await fetch("/api/upload", {
+                method: "POST",
+                body: d
+            });
+            
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            
+            const json = await res.json();
+            
+            if (json.error) {
+                throw new Error(json.error);
+            }
+            
+            // 单文件时自动设置到当前项
+            if (files.length === 1 && json.filename) {
                 const m = getCurrentMenu();
-                if (type === 'video' && res.filename) m.bg_video = res.filename;
-                else if (type === 'background' && res.filename) m.background = res.filename;
+                if (type === 'video') m.bg_video = json.filename;
+                else if (type === 'background') m.background = json.filename;
                 else if (type === 'icon' && selectedItem.gIdx !== -1) {
-                     updateProp('item', selectedItem.gIdx, selectedItem.iIdx, 'icon', res.filename);
+                    updateProp('item', selectedItem.gIdx, selectedItem.iIdx, 'icon', json.filename);
+                } else if (type === 'widget_img' && selectedWidgetIdx !== -1) {
+                    updateWidget('content', json.filename);
                 }
             }
+            
+            return { success: true, filename: f.name };
         } catch (e) {
             console.error(`File ${f.name} upload failed:`, e);
-            failCount++;
+            return { success: false, filename: f.name, error: e.message };
         }
-    }
+    });
 
-    if(inp.previousElementSibling) inp.previousElementSibling.innerText = originalText;
+    // 等待所有上传完成
+    const results = await Promise.all(uploadPromises);
+    
+    results.forEach(r => {
+        if (r.success) {
+            successCount++;
+        } else {
+            failCount++;
+            failedFiles.push(r.filename);
+        }
+    });
 
+    if (btn) btn.innerText = originalText;
+
+    // 刷新资源列表
     await loadAssets();
     if (type === 'font') initFonts();
     renderAll();
 
+    // 刷新编辑器面板
     if (selectedWidgetIdx !== -1) updateWidgetEditor(getCurrentMenu());
     if (selectedItem.gIdx !== -1) openContextEditor('item', selectedItem.gIdx, selectedItem.iIdx);
 
-    // 提示
-    alert(`上传完成\n✅ 成功: ${successCount} 个\n❌ 失败: ${failCount} 个`);
+    // 提示结果
+    let msg = `上传完成\n✅ 成功: ${successCount} 个`;
+    if (failCount > 0) {
+        msg += `\n❌ 失败: ${failCount} 个\n失败文件: ${failedFiles.join(', ')}`;
+    }
+    alert(msg);
+    
     inp.value = "";
 }
 
@@ -402,7 +442,8 @@ function updateFormInputs(m) {
     setValue("bgCustomH", m.bg_custom_height || 1000);
     toggleBgCustomInputs();
 
-    renderSelect("bgSelect", appState.assets.backgrounds, m.background, "无背景");
+    // 使用带预览的背景图片选择器
+    renderImageSelect("bgSelectPreview", "background", m.background, (v) => { updateBg(v); });
     renderSelect("vidSelect", appState.assets.videos, m.bg_video, "无视频");
     renderRandomBgList();  // 渲染随机背景列表
 
@@ -845,7 +886,8 @@ function updateWidgetEditor(m) {
         document.getElementById("wEdit-image").style.display = "block";
         setValue("widW", w.width);
         setValue("widH", w.height);
-        renderSelect("widImgSelect", appState.assets.widget_imgs, w.content, "选择图片");
+        // 使用带预览的组件图片选择器
+        renderImageSelect("widImgSelectPreview", "widget", w.content, (v) => { updateWidget('content', v); });
     } else {
         document.getElementById("wEdit-image").style.display = "none";
         document.getElementById("wEdit-text").style.display = "block";
@@ -1195,17 +1237,20 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
 
-        const icons = (appState.assets.icons || []).map(i => `<option value="${i}" ${i===obj.icon?'selected':''}>${i}</option>`).join('');
+        // 使用带预览的图标选择器
+        const iconPreview = obj.icon ? 
+            `<img src="/raw_assets/icons/${obj.icon}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;">` :
+            `<div style="width:32px;height:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;">无</div>`;
         html += `
         <div class="form-row">
             <label>图标</label>
-            <div style="display:flex; gap:5px;">
-                <select style="flex:1" onchange="updateProp('${type}', ${gIdx}, ${iIdx}, 'icon', this.value)">
-                    <option value="">无</option>
-                    ${icons}
-                </select>
+            <div style="display:flex; gap:5px; align-items:center;">
+                <div style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;" onclick="openImagePicker('icon', '${obj.icon || ''}', (v) => { updateProp('item', ${gIdx}, ${iIdx}, 'icon', v); openContextEditor('item', ${gIdx}, ${iIdx}); })">
+                    ${iconPreview}
+                    <span style="flex:1;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${obj.icon || '点击选择...'}</span>
+                    <span style="color:#888;font-size:14px;">▼</span>
+                </div>
                 <button class="btn btn-secondary" onclick="document.getElementById('itemIconUp').click()" title="上传新图标">⬆</button>
-                <!-- multiple -->
                 <input type="file" id="itemIconUp" hidden accept="image/*" multiple onchange="uploadFile('icon', this)">
             </div>
         </div>`;
@@ -1291,50 +1336,43 @@ function handleGlobalMouseMove(e) {
     if (!dragData.isDragging) {
         if (Math.abs(e.clientX - dragData.startX) > 3 || Math.abs(e.clientY - dragData.startY) > 3) {
             dragData.isDragging = true;
+            // 拖动开始时添加拖动样式
+            if (dragData.cachedEl) {
+                dragData.cachedEl.style.willChange = 'transform';
+                dragData.cachedEl.style.zIndex = '9999';
+            }
         } else return;
     }
 
     e.preventDefault();
 
+    // 使用 RAF 节流，但核心逻辑使用 CSS transform 实现流畅拖动
     if (!rafLock) {
         rafLock = true;
         requestAnimationFrame(() => {
+            if (!dragData.cachedEl) { rafLock = false; return; }
+            
             const dx = (e.clientX - dragData.startX) / dragData.zoom;
             const dy = (e.clientY - dragData.startY) / dragData.zoom;
 
-            const m = getCurrentMenu();
-            let obj;
-            if (dragData.type === 'item') obj = m.groups[dragData.gIdx].items[dragData.iIdx];
-            else obj = m.custom_widgets[dragData.targetIdx];
-
             if (dragData.mode === 'move') {
-                let nx = dragData.initialVals.x + dx;
-                let ny = dragData.initialVals.y + dy;
-                if (Math.abs(nx) < 10) nx = 0;
-                if (Math.abs(ny) < 10) ny = 0;
-
-                obj.x = Math.round(nx);
-                obj.y = Math.round(ny);
-
-                dragData.cachedEl.style.left = obj.x + "px";
-                dragData.cachedEl.style.top = obj.y + "px";
+                // 使用 CSS transform 进行流畅移动，不更新数据
+                dragData.cachedEl.style.transform = `translate(${dx}px, ${dy}px)`;
+                // 缓存当前偏移量
+                dragData.currentDx = dx;
+                dragData.currentDy = dy;
             } else {
+                // resize 模式：计算新尺寸
                 let nw = dragData.initialVals.w + dx;
                 let nh = dragData.initialVals.h + dy;
                 if (nw < 20) nw = 20;
                 if (nh < 20) nh = 20;
-
-                if (dragData.type === 'item') {
-                    obj.w = Math.round(nw);
-                    obj.h = Math.round(nh);
-                    dragData.cachedEl.style.width = obj.w + "px";
-                    dragData.cachedEl.style.height = obj.h + "px";
-                } else {
-                    obj.width = Math.round(nw);
-                    obj.height = Math.round(nh);
-                    dragData.cachedEl.style.width = obj.width + "px";
-                    dragData.cachedEl.style.height = obj.height + "px";
-                }
+                
+                dragData.cachedEl.style.width = Math.round(nw) + "px";
+                dragData.cachedEl.style.height = Math.round(nh) + "px";
+                // 缓存当前尺寸
+                dragData.currentW = nw;
+                dragData.currentH = nh;
             }
             rafLock = false;
         });
@@ -1342,14 +1380,59 @@ function handleGlobalMouseMove(e) {
 }
 
 function handleGlobalMouseUp(e) {
-    if (dragData.active) {
-        dragData.active = false;
-        dragData.isDragging = false;
-        dragData.cachedEl = null;
-        renderCanvas(getCurrentMenu());
-        if (dragData.type === 'widget') updateWidgetEditor(getCurrentMenu());
+    if (dragData.active && dragData.isDragging) {
+        const m = getCurrentMenu();
+        let obj;
+        
+        if (dragData.type === 'item') {
+            obj = m.groups[dragData.gIdx].items[dragData.iIdx];
+        } else {
+            obj = m.custom_widgets[dragData.targetIdx];
+        }
+
+        if (dragData.mode === 'move' && dragData.currentDx !== undefined) {
+            // 计算最终位置
+            let nx = dragData.initialVals.x + dragData.currentDx;
+            let ny = dragData.initialVals.y + dragData.currentDy;
+            
+            // 吸附到0
+            if (Math.abs(nx) < 10) nx = 0;
+            if (Math.abs(ny) < 10) ny = 0;
+            
+            obj.x = Math.round(nx);
+            obj.y = Math.round(ny);
+        } else if (dragData.mode === 'resize') {
+            if (dragData.type === 'item') {
+                obj.w = Math.round(dragData.currentW || dragData.initialVals.w);
+                obj.h = Math.round(dragData.currentH || dragData.initialVals.h);
+            } else {
+                obj.width = Math.round(dragData.currentW || dragData.initialVals.w);
+                obj.height = Math.round(dragData.currentH || dragData.initialVals.h);
+            }
+        }
+
+        // 清除拖动样式
+        if (dragData.cachedEl) {
+            dragData.cachedEl.style.transform = '';
+            dragData.cachedEl.style.willChange = '';
+            dragData.cachedEl.style.zIndex = '';
+        }
+
+        // 重绘画布更新最终位置
+        renderCanvas(m);
+        
+        if (dragData.type === 'widget') updateWidgetEditor(m);
         else if (dragData.type === 'item') openContextEditor('item', dragData.gIdx, dragData.iIdx);
     }
+    
+    // 重置拖动状态
+    dragData.active = false;
+    dragData.isDragging = false;
+    dragData.cachedEl = null;
+    dragData.currentDx = undefined;
+    dragData.currentDy = undefined;
+    dragData.currentW = undefined;
+    dragData.currentH = undefined;
 }
 
 function handleKeyDown(e) {
@@ -1383,6 +1466,120 @@ function handleKeyDown(e) {
         renderCanvas(m);
         updateFn();
     }
+}
+
+// =============================================================
+//  随机背景功能
+// =============================================================
+//  通用图片选择器（带预览）
+// =============================================================
+
+let imagePickerCallback = null;
+let imagePickerType = '';
+
+function openImagePicker(type, currentValue, callback) {
+    imagePickerCallback = callback;
+    imagePickerType = type;
+    
+    let images = [];
+    let basePath = '';
+    let title = '选择图片';
+    
+    switch(type) {
+        case 'background':
+            images = appState.assets.backgrounds || [];
+            basePath = '/raw_assets/backgrounds/';
+            title = '🖼️ 选择背景图片';
+            break;
+        case 'icon':
+            images = appState.assets.icons || [];
+            basePath = '/raw_assets/icons/';
+            title = '🎯 选择图标';
+            break;
+        case 'widget':
+            images = appState.assets.widget_imgs || [];
+            basePath = '/raw_assets/widgets/';
+            title = '🧩 选择组件图片';
+            break;
+    }
+    
+    const modal = document.getElementById('imagePickerModal');
+    const container = document.getElementById('imagePickerGrid');
+    const titleEl = document.getElementById('imagePickerTitle');
+    
+    titleEl.innerText = title;
+    container.innerHTML = '';
+    
+    if (images.length === 0) {
+        container.innerHTML = '<div style="color:#888; text-align:center; grid-column:1/-1; padding:40px;">暂无图片，请先上传</div>';
+        modal.style.display = 'flex';
+        return;
+    }
+    
+    // 添加"无"选项
+    const noneItem = document.createElement('div');
+    noneItem.className = 'image-picker-item' + (!currentValue ? ' selected' : '');
+    noneItem.onclick = () => selectImage('');
+    noneItem.innerHTML = `
+        <div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;background:#333;border-radius:4px;color:#666;font-size:24px;">✕</div>
+        <span>无</span>
+    `;
+    container.appendChild(noneItem);
+    
+    images.forEach(img => {
+        const isSelected = img === currentValue;
+        const item = document.createElement('div');
+        item.className = 'image-picker-item' + (isSelected ? ' selected' : '');
+        item.onclick = () => selectImage(img);
+        item.innerHTML = `
+            <img src="${basePath}${img}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect fill=%22%23333%22 width=%2280%22 height=%2280%22/><text x=%2240%22 y=%2245%22 text-anchor=%22middle%22 fill=%22%23666%22>Error</text></svg>'">
+            <span title="${img}">${img.length > 12 ? img.substring(0, 10) + '...' : img}</span>
+        `;
+        container.appendChild(item);
+    });
+    
+    modal.style.display = 'flex';
+}
+
+function selectImage(value) {
+    if (imagePickerCallback) {
+        imagePickerCallback(value);
+    }
+    document.getElementById('imagePickerModal').style.display = 'none';
+    imagePickerCallback = null;
+}
+
+function closeImagePicker() {
+    document.getElementById('imagePickerModal').style.display = 'none';
+    imagePickerCallback = null;
+}
+
+// =============================================================
+//  带预览的选择器渲染函数
+// =============================================================
+
+function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    let basePath = '';
+    switch(type) {
+        case 'background': basePath = '/raw_assets/backgrounds/'; break;
+        case 'icon': basePath = '/raw_assets/icons/'; break;
+        case 'widget': basePath = '/raw_assets/widgets/'; break;
+    }
+    
+    const preview = currentValue ? 
+        `<img src="${basePath}${currentValue}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;">` :
+        `<div style="width:32px;height:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;">无</div>`;
+    
+    container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;" onclick="openImagePicker('${type}', '${currentValue || ''}', (v) => { ${onChangeCallback}(v); })">
+            ${preview}
+            <span style="flex:1;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${currentValue || '点击选择...'}</span>
+            <span style="color:#888;font-size:14px;">▼</span>
+        </div>
+    `;
 }
 
 // =============================================================

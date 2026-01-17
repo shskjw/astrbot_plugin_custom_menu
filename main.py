@@ -274,7 +274,7 @@ class CustomMenuPlugin(Star):
             yield event_obj.plain_result(f"❌ 系统内部错误: {e}")
 
     @filter.event_message_type(filter.EventMessageType.ALL)
-    async def menu_smart_check(self, event: event.AstrMessageEvent):
+    async def menu_smart_check(self, event: event.AstrMessageEvent, *args, **kwargs):
         msg = event.message_str.strip()
         if not msg: return
 

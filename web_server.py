@@ -38,11 +38,13 @@ def mock_astrbot_modules(queue):
 
 def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data=None):
     mock_astrbot_modules(log_queue)
+    log_queue.put(("INFO", "子进程已启动，正在加载依赖..."))
     try:
         from quart import Quart, request, render_template, redirect, url_for, session, jsonify, send_from_directory, \
             send_file, Response
         from hypercorn.config import Config
         from hypercorn.asyncio import serve
+        log_queue.put(("INFO", "依赖加载完成，正在初始化服务器..."))
 
         try:
             import storage

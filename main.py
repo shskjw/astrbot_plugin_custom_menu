@@ -275,7 +275,7 @@ class CustomMenuPlugin(Star):
         ctx = multiprocessing.get_context('spawn')
         status_q, self.log_queue = ctx.Queue(), ctx.Queue()
 
-        yield event.plain_result("🚀 正在启动后台...")
+        yield event.plain_result("🚀 正在启动后台...(首次启动可能需要20-30秒)")
 
         command_data = self.get_astrbot_commands()
 
@@ -289,7 +289,8 @@ class CustomMenuPlugin(Star):
             self._log_consumer_task = threading.Thread(target=self._consume_logs, daemon=True)
             self._log_consumer_task.start()
             msg = "TIMEOUT"
-            for _ in range(20):
+            # Windows spawn 模式启动较慢，增加超时到30秒
+            for i in range(60):
                 if not status_q.empty(): msg = status_q.get(); break
                 if not self.web_process.is_alive(): msg = "DIED"; break
                 await asyncio.sleep(0.5)

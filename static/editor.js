@@ -404,6 +404,7 @@ function updateFormInputs(m) {
 
     renderSelect("bgSelect", appState.assets.backgrounds, m.background, "无背景");
     renderSelect("vidSelect", appState.assets.videos, m.bg_video, "无视频");
+    renderRandomBgList();  // 渲染随机背景列表
 
     setValue("vStart", m.video_start || 0);
     setValue("vEnd", m.video_end || "");
@@ -1382,4 +1383,76 @@ function handleKeyDown(e) {
         renderCanvas(m);
         updateFn();
     }
+}
+
+// =============================================================
+//  随机背景功能
+// =============================================================
+
+function openRandomBgModal() {
+    const m = getCurrentMenu();
+    const bgList = appState.assets.backgrounds || [];
+    const selectedBgs = m.backgrounds || [];
+    
+    const container = document.getElementById('randomBgCheckList');
+    container.innerHTML = '';
+    
+    if (bgList.length === 0) {
+        container.innerHTML = '<div style="color:#888; text-align:center; grid-column:1/-1;">暂无背景图片，请先上传</div>';
+        document.getElementById('randomBgModal').style.display = 'flex';
+        return;
+    }
+    
+    bgList.forEach(bg => {
+        const isChecked = selectedBgs.includes(bg);
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex; align-items:center; gap:8px; padding:5px; background:#333; border-radius:4px;';
+        item.innerHTML = `
+            <input type="checkbox" class="random-bg-check" value="${bg}" ${isChecked ? 'checked' : ''} style="width:16px;height:16px;">
+            <img src="/raw_assets/backgrounds/${bg}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">
+            <span style="font-size:11px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="${bg}">${bg}</span>
+        `;
+        container.appendChild(item);
+    });
+    
+    document.getElementById('randomBgModal').style.display = 'flex';
+}
+
+function confirmRandomBgSelection() {
+    const m = getCurrentMenu();
+    const checks = document.querySelectorAll('.random-bg-check:checked');
+    const selected = Array.from(checks).map(c => c.value);
+    
+    m.backgrounds = selected;
+    
+    // 更新显示
+    renderRandomBgList();
+    document.getElementById('randomBgModal').style.display = 'none';
+}
+
+function renderRandomBgList() {
+    const m = getCurrentMenu();
+    const container = document.getElementById('randomBgList');
+    if (!container) return;
+    
+    const bgList = m.backgrounds || [];
+    
+    if (bgList.length === 0) {
+        container.innerHTML = '<div style="color:#666; font-size:11px; text-align:center;">未配置随机背景</div>';
+        return;
+    }
+    
+    container.innerHTML = bgList.map(bg => `
+        <div style="display:inline-flex; align-items:center; gap:4px; margin:2px; padding:3px 6px; background:#333; border-radius:4px; font-size:10px;">
+            <img src="/raw_assets/backgrounds/${bg}" style="width:20px;height:20px;object-fit:cover;border-radius:2px;">
+            <span style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${bg}">${bg}</span>
+            <span style="cursor:pointer;color:#f56c6c;" onclick="removeRandomBg('${bg}')">&times;</span>
+        </div>
+    `).join('');
+}
+
+function removeRandomBg(bgName) {
+    const m = getCurrentMenu();
+    m.backgrounds = (m.backgrounds || []).filter(b => b !== bgName);
+    renderRandomBgList();
 }

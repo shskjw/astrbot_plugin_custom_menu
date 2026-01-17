@@ -41,7 +41,7 @@ def _get_local_ip_sync():
 async def get_local_ip(): return await asyncio.to_thread(_get_local_ip_sync)
 
 
-@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.8.0")
+@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.8.5")
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -186,29 +186,73 @@ class CustomMenuPlugin(Star):
                 ]
 
             if not target_menus:
-                if not specific_menus:
-                    yield event_obj.plain_result("⚠️ 当前没有配置默认菜单，请在后台配置或检查触发词。");
+                # 没有默认菜单时静默返回，不发送提示
                 return
 
             for menu_data in target_menus:
                 menu_id = menu_data.get("id")
                 is_video_mode = (menu_data.get("bg_type") == "video")
+                
+                # 检查是否使用随机背景（有多张背景图配置时）
+                backgrounds_list = menu_data.get("backgrounds", [])
+                has_random_bg = len(backgrounds_list) > 1
 
                 output_format_key = "png"
                 if is_video_mode:
                     output_format_key = menu_data.get("video_export_format", "apng")
 
-                cache_path = storage.plugin_storage.get_menu_output_cache_path(menu_id, is_video_mode,
-                                                                               output_format_key)
-
-                if cache_path.exists():
-                    logger.info(f"✅ 从缓存发送: {menu_data.get('name')}")
-                    yield self._yield_smart_result(event_obj, str(cache_path))
-                    continue
-
-                logger.info(f"渲染菜单: {menu_data.get('name')} (模式: {'动画' if is_video_mode else '静态'})")
-
                 try:
+                    if has_random_bg and not is_video_mode:
+                        # 随机背景模式：预渲染所有背景版本，随机选择一个输出
+                        import random
+                        
+                        # 检查所有背景版本是否都已缓存
+                        all_cached = True
+                        cache_paths = []
+                        for i, bg_name in enumerate(backgrounds_list):
+                            cache_path = storage.plugin_storage.get_menu_output_cache_path(menu_id, False, "png", bg_index=i)
+                            cache_paths.append(cache_path)
+                            if not cache_path.exists():
+                                all_cached = False
+                        
+                        if all_cached:
+                            # 所有版本都已缓存，随机选择一个
+                            chosen_path = random.choice(cache_paths)
+                            logger.info(f"✅ 从随机背景缓存发送: {menu_data.get('name')} ({chosen_path.name})")
+                            yield self._yield_smart_result(event_obj, str(chosen_path))
+                            continue
+                        
+                        # 需要渲染缺失的版本
+                        logger.info(f"渲染菜单随机背景版本: {menu_data.get('name')} (共{len(backgrounds_list)}个背景)")
+                        for i, bg_name in enumerate(backgrounds_list):
+                            cache_path = cache_paths[i]
+                            if cache_path.exists():
+                                continue
+                            # 创建一个临时的menu_data，指定单个背景
+                            temp_menu_data = menu_data.copy()
+                            temp_menu_data["background"] = bg_name
+                            temp_menu_data["backgrounds"] = []  # 清空列表，使用单个背景
+                            img = await asyncio.to_thread(render_static, temp_menu_data)
+                            await asyncio.to_thread(img.save, cache_path)
+                            logger.info(f"  ✅ 已缓存背景 {i+1}/{len(backgrounds_list)}: {bg_name}")
+                        
+                        # 随机选择一个输出
+                        chosen_path = random.choice(cache_paths)
+                        logger.info(f"✅ 随机选择发送: {chosen_path.name}")
+                        yield self._yield_smart_result(event_obj, str(chosen_path))
+                        continue
+                    
+                    # 非随机背景模式
+                    cache_path = storage.plugin_storage.get_menu_output_cache_path(menu_id, is_video_mode,
+                                                                                   output_format_key)
+
+                    if cache_path.exists():
+                        logger.info(f"✅ 从缓存发送: {menu_data.get('name')}")
+                        yield self._yield_smart_result(event_obj, str(cache_path))
+                        continue
+
+                    logger.info(f"渲染菜单: {menu_data.get('name')} (模式: {'动画' if is_video_mode else '静态'})")
+
                     if is_video_mode:
                         result_path = await asyncio.to_thread(render_animated, menu_data, cache_path)
                         if result_path and result_path.exists():

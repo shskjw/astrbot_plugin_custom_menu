@@ -190,7 +190,8 @@ class PluginStorage:
             "videos": scan(self.video_dir, ['.mp4', '.mov', '.webm', '.avi', '.mkv'])
         }
 
-    def get_menu_output_cache_path(self, menu_id: str, is_video: bool, output_format: str = "png") -> Path:
+    def get_menu_output_cache_path(self, menu_id: str, is_video: bool, output_format: str = "png", bg_index: int = None) -> Path:
+        """获取菜单输出缓存路径，bg_index用于随机背景的索引"""
         if not self.outputs_dir: self.init_paths()
 
         if not is_video:
@@ -206,7 +207,15 @@ class PluginStorage:
             else:
                 ext = 'png'
 
+        # 如果有背景索引，添加到文件名中
+        if bg_index is not None:
+            return self.outputs_dir / f"menu_{menu_id}_bg{bg_index}.{ext}"
         return self.outputs_dir / f"menu_{menu_id}.{ext}"
+
+    def get_random_bg_cache_paths(self, menu_id: str, bg_count: int) -> list:
+        """获取随机背景的所有缓存路径"""
+        if not self.outputs_dir: self.init_paths()
+        return [self.outputs_dir / f"menu_{menu_id}_bg{i}.png" for i in range(bg_count)]
 
     def cleanup_unused_caches(self, current_menus: List[Dict]):
         if not self.outputs_dir or not self.outputs_dir.exists(): return
@@ -218,7 +227,7 @@ class PluginStorage:
             try:
                 stem = f.stem
                 if not stem.startswith("menu_"): continue
-                mid = stem[5:]
+                mid = stem[5:].split('_bg')[0]  # 处理随机背景缓存文件名
                 if mid not in all_ids or mid not in valid_ids:
                     f.unlink()
             except:
@@ -226,6 +235,7 @@ class PluginStorage:
 
     def clear_menu_cache(self, menu_id: str):
         if not self.outputs_dir: return
+        # 清除普通缓存
         for ext in ['jpg', 'png', 'webp', 'gif']:
             f = self.outputs_dir / f"menu_{menu_id}.{ext}"
             if f.exists():
@@ -233,6 +243,12 @@ class PluginStorage:
                     f.unlink()
                 except:
                     pass
+        # 清除随机背景缓存 (menu_{id}_bg{index}.png)
+        for f in self.outputs_dir.glob(f"menu_{menu_id}_bg*.png"):
+            try:
+                f.unlink()
+            except:
+                pass
 
 
 plugin_storage = PluginStorage()

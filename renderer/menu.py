@@ -83,6 +83,59 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
 def draw_glass_rect(base_img: Image.Image, box: tuple, color_hex: str, alpha: int, radius: int, corner_r=15):
     overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
+
+
+def wrap_text_to_width(text: str, font, max_width: int, draw) -> str:
+    """将文本根据最大宽度自动换行"""
+    if not text or max_width <= 0:
+        return text
+    
+    # 如果已经有手动换行，分别处理每一行
+    lines = text.split('\n')
+    wrapped_lines = []
+    
+    for line in lines:
+        if not line:
+            wrapped_lines.append('')
+            continue
+            
+        # 计算当前行宽度
+        try:
+            if hasattr(draw, 'textbbox'):
+                line_width = draw.textbbox((0, 0), line, font=font)[2]
+            else:
+                line_width = draw.textsize(line, font=font)[0]
+        except:
+            line_width = len(line) * 20
+        
+        # 如果不超过最大宽度，直接添加
+        if line_width <= max_width:
+            wrapped_lines.append(line)
+            continue
+        
+        # 需要换行
+        current_line = ''
+        for char in line:
+            test_line = current_line + char
+            try:
+                if hasattr(draw, 'textbbox'):
+                    test_width = draw.textbbox((0, 0), test_line, font=font)[2]
+                else:
+                    test_width = draw.textsize(test_line, font=font)[0]
+            except:
+                test_width = len(test_line) * 20
+            
+            if test_width <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    wrapped_lines.append(current_line)
+                current_line = char
+        
+        if current_line:
+            wrapped_lines.append(current_line)
+    
+    return '\n'.join(wrapped_lines)
     draw.rounded_rectangle(box, radius=corner_r, fill=hex_to_rgb(color_hex) + (int(alpha),))
     base_img.alpha_composite(overlay)
 
@@ -92,6 +145,7 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, sca
     w, h = x2 - x, y2 - y
     icon_name = item.get("icon", "")
     text_start_x = x + int(15 * scale)
+    text_max_width = w - int(30 * scale)  # 文本最大宽度
 
     if icon_name and plugin_storage.icon_dir:
         icon_path = plugin_storage.icon_dir / icon_name
@@ -107,12 +161,17 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, sca
                     icon_x, icon_y = x + int(15 * scale), y + (h - icon_resized.height) // 2
                     overlay_img.paste(icon_resized, (icon_x, icon_y), icon_resized)
                     text_start_x = icon_x + icon_resized.width + int(12 * scale)
+                    text_max_width = x2 - text_start_x - int(15 * scale)  # 更新文本最大宽度
             except:
                 pass
 
     name, desc = item.get("name", ""), item.get("desc", "")
     name_font, desc_font = fonts_map["name"], fonts_map["desc"]
     line_spacing = int(4 * scale)
+    
+    # 自动换行处理
+    if desc and text_max_width > 0:
+        desc = wrap_text_to_width(desc, desc_font, text_max_width, draw)
 
     try:
         if name and hasattr(name_font, "getbbox"):
@@ -383,6 +442,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
 
 
 def render_static(menu_data: dict) -> Image.Image:
+    import random
     layout_img = _render_layout(menu_data, is_video_mode=False)
     fw, fh = layout_img.size
 
@@ -395,7 +455,15 @@ def render_static(menu_data: dict) -> Image.Image:
     c_color = hex_to_rgb(menu_data.get("canvas_color", "#1e1e1e"))
     final_img = Image.new("RGBA", (fw, fh), c_color + (255,))
 
-    if (bg_name := menu_data.get("background")) and plugin_storage.bg_dir:
+    # 随机背景支持：优先使用 backgrounds 列表，否则使用单个 background
+    bg_name = None
+    backgrounds_list = menu_data.get("backgrounds", [])
+    if backgrounds_list:
+        bg_name = random.choice(backgrounds_list)
+    else:
+        bg_name = menu_data.get("background")
+
+    if bg_name and plugin_storage.bg_dir:
         try:
             with Image.open(plugin_storage.bg_dir / bg_name).convert("RGBA") as bg_img:
                 fit_mode = menu_data.get("bg_fit_mode", "cover")

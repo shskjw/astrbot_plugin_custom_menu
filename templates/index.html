@@ -158,6 +158,12 @@
                             <input type="file" id="bgUp" hidden multiple onchange="uploadFile('background', this)">
                         </div>
                     </div>
+                    <!-- 随机背景功能 -->
+                    <div style="background:#2b2b2b; padding:10px; border-radius:4px; margin-top:10px; border:1px solid #444;">
+                        <label style="color:#888;font-size:11px;margin-bottom:8px;display:block;">🎲 随机背景 (每次触发随机选择)</label>
+                        <div id="randomBgList" style="max-height:150px; overflow-y:auto; margin-bottom:8px;"></div>
+                        <button class="btn btn-secondary btn-block" onclick="openRandomBgModal()">✏️ 编辑随机背景列表</button>
+                    </div>
                 </div>
 
                 <!-- 视频专用面板 -->
@@ -300,6 +306,20 @@
         <div style="display:flex; justify-content: flex-end; gap: 10px;">
             <button class="btn btn-secondary" onclick="document.getElementById('autoFillModal').style.display='none'">取消</button>
             <button class="btn btn-primary" onclick="confirmAutoFill()">导入选中项</button>
+        </div>
+    </div>
+</div>
+
+<!-- 随机背景选择弹窗 -->
+<div id="randomBgModal" class="modal-overlay">
+    <div class="modal" style="width: 500px;">
+        <h3>🎲 编辑随机背景列表</h3>
+        <p style="color:#aaa; font-size:12px; margin-bottom:15px;">勾选多张背景图片，每次触发菜单时随机选择一张显示。</p>
+        <div id="randomBgCheckList" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #444; padding: 10px; border-radius: 4px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+        </div>
+        <div style="display:flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" onclick="document.getElementById('randomBgModal').style.display='none'">取消</button>
+            <button class="btn btn-primary" onclick="confirmRandomBgSelection()">确定</button>
         </div>
     </div>
 </div>

@@ -83,6 +83,8 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
 def draw_glass_rect(base_img: Image.Image, box: tuple, color_hex: str, alpha: int, radius: int, corner_r=15):
     overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
+    draw.rounded_rectangle(box, radius=corner_r, fill=hex_to_rgb(color_hex) + (int(alpha),))
+    base_img.alpha_composite(overlay)
 
 
 def wrap_text_to_width(text: str, font, max_width: int, draw) -> str:
@@ -136,8 +138,6 @@ def wrap_text_to_width(text: str, font, max_width: int, draw) -> str:
             wrapped_lines.append(current_line)
     
     return '\n'.join(wrapped_lines)
-    draw.rounded_rectangle(box, radius=corner_r, fill=hex_to_rgb(color_hex) + (int(alpha),))
-    base_img.alpha_composite(overlay)
 
 
 def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, scale):

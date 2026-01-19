@@ -120,6 +120,71 @@ def run_server(config_dict, status_queue, log_queue, data_dir=None, command_data
                 return jsonify({"status": "ok", "filename": fname})
             return jsonify({"error": "Unknown type"}), 400
 
+        @app.route("/api/delete_asset", methods=["POST"])
+        async def delete_asset():
+            data = await request.get_json()
+            asset_type = data.get("type")
+            filename = data.get("filename")
+            
+            if not filename or not asset_type:
+                return jsonify({"error": "Missing filename or type"}), 400
+            
+            # 防止路径遍历攻击
+            if ".." in filename or "/" in filename or "\\" in filename:
+                return jsonify({"error": "Invalid filename"}), 400
+            
+            target_map = {"background": plugin_storage.bg_dir, "video": plugin_storage.video_dir,
+                          "icon": plugin_storage.icon_dir, "widget_img": plugin_storage.img_dir,
+                          "font": plugin_storage.fonts_dir}
+            target_dir = target_map.get(asset_type)
+            
+            if not target_dir:
+                return jsonify({"error": "Unknown type"}), 400
+            
+            file_path = target_dir / filename
+            
+            if not file_path.exists():
+                return jsonify({"error": "File not found"}), 404
+            
+            try:
+                file_path.unlink()
+                for m in plugin_storage.load_config().get("menus", []):
+                    plugin_storage.clear_menu_cache(m.get("id"))
+                return jsonify({"status": "ok"})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        @app.route("/api/download_asset", methods=["POST"])
+        async def download_asset():
+            data = await request.get_json()
+            asset_type = data.get("type")
+            filename = data.get("filename")
+            
+            if not filename or not asset_type:
+                return jsonify({"error": "Missing filename or type"}), 400
+            
+            # 防止路径遍历攻击
+            if ".." in filename or "/" in filename or "\\" in filename:
+                return jsonify({"error": "Invalid filename"}), 400
+            
+            target_map = {"background": plugin_storage.bg_dir, "video": plugin_storage.video_dir,
+                          "icon": plugin_storage.icon_dir, "widget_img": plugin_storage.img_dir,
+                          "font": plugin_storage.fonts_dir}
+            target_dir = target_map.get(asset_type)
+            
+            if not target_dir:
+                return jsonify({"error": "Unknown type"}), 400
+            
+            file_path = target_dir / filename
+            
+            if not file_path.exists():
+                return jsonify({"error": "File not found"}), 404
+            
+            try:
+                return await send_file(str(file_path), as_attachment=True, attachment_filename=filename)
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
         @app.route("/api/export_image", methods=["POST"])
         async def export():
             m = await request.get_json()

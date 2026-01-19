@@ -438,8 +438,12 @@ function updateFormInputs(m) {
     const scaleValSpan = document.getElementById("bgScaleVal");
     if(scaleValSpan) scaleValSpan.innerText = bgScale;
 
-    setValue("bgCustomW", m.bg_custom_width || 1000);
-    setValue("bgCustomH", m.bg_custom_height || 1000);
+    setValue("bgCustomW", m.bg_custom_width || "");
+    setValue("bgCustomH", m.bg_custom_height || "");
+    setValue("groupCustomW", m.group_custom_width || "");
+    setValue("groupCustomH", m.group_custom_height || "");
+    setValue("itemCustomW", m.item_custom_width || "");
+    setValue("itemCustomH", m.item_custom_height || "");
     toggleBgCustomInputs();
 
     // 使用带预览的背景图片选择器
@@ -496,7 +500,7 @@ function updateFormInputs(m) {
 
 function updateMenuMeta(key, val) {
     const m = getCurrentMenu();
-    if (['layout_columns', 'canvas_width', 'canvas_height', 'group_blur_radius', 'item_blur_radius', 'group_bg_alpha', 'item_bg_alpha', 'shadow_offset_x', 'shadow_offset_y', 'shadow_radius', 'bg_custom_width', 'bg_custom_height', 'video_fps'].includes(key)) {
+    if (['layout_columns', 'canvas_width', 'canvas_height', 'group_blur_radius', 'item_blur_radius', 'group_bg_alpha', 'item_bg_alpha', 'shadow_offset_x', 'shadow_offset_y', 'shadow_radius', 'bg_custom_width', 'bg_custom_height', 'group_custom_width', 'group_custom_height', 'item_custom_width', 'item_custom_height', 'video_fps'].includes(key)) {
         m[key] = parseInt(val);
     } else if (key === 'use_canvas_size' || key === 'shadow_enabled') {
         m[key] = val === 'true' || val === true;
@@ -689,17 +693,28 @@ function renderCanvas(m) {
 
     (m.groups || []).forEach((g, gIdx) => {
         const gRgba = hexToRgba(getStyle(g, 'bg_color', 'group_bg_color'), (g.bg_alpha !== undefined ? g.bg_alpha : m.group_bg_alpha) / 255);
-        const gBlur = m.group_blur_radius > 0 ? `backdrop-filter: blur(${m.group_blur_radius}px);` : '';
+        
+        // 分组自定义模糊或使用全局模糊
+        const gGroupBlur = g.blur_radius !== undefined ? g.blur_radius : m.group_blur_radius;
+        const gBlur = gGroupBlur > 0 ? `backdrop-filter: blur(${gGroupBlur}px);` : '';
         const freeMode = g.free_mode === true;
+        const isTextGroup = g.group_type === 'text';
 
         let contentHeight = "auto";
-        if (freeMode) {
+        let groupWidth = "auto";
+        let groupHeight = "auto";
+        
+        // 处理分组自定义大小
+        if (g.custom_width !== undefined) groupWidth = g.custom_width + "px";
+        if (g.custom_height !== undefined) groupHeight = g.custom_height + "px";
+        
+        if (freeMode && !isTextGroup) {
             let maxBottom = 0;
             (g.items || []).forEach(item => { const b = (parseInt(item.y) || 0) + (parseInt(item.h) || 100); if (b > maxBottom) maxBottom = b; });
             contentHeight = Math.max(Number(g.min_height) || 100, maxBottom + 20) + "px";
         }
 
-        const gridStyle = freeMode ? '' : `display:grid; gap:15px; padding:20px; grid-template-columns: repeat(${g.layout_columns || m.layout_columns || 3}, 1fr);`;
+        const gridStyle = (freeMode && !isTextGroup) ? '' : `display:grid; gap:15px; padding:20px; grid-template-columns: repeat(${g.layout_columns || m.layout_columns || 3}, 1fr);`;
 
         const gTitleSz = getStyle(g, 'title_size', 'group_title_size') || 30;
         const gTitleFont = cssFont(getStyle(g, 'title_font', 'group_title_font'));
@@ -716,38 +731,63 @@ function renderCanvas(m) {
         <div class="group-wrapper">
             <div class="group-header-wrap" onclick="openContextEditor('group', ${gIdx}, -1)"
                  style="padding:0 0 10px 10px; cursor:pointer; text-shadow:${shadowCss}; display:flex; gap:15px; align-items:${alignItems};">
-                <span style="color:${getStyle(g, 'title_color', 'group_title_color')}; font-family:'${gTitleFont}'; font-size:${gTitleSz}px; line-height:1;">${g.title}</span>
-                ${g.subtitle ? `<span style="color:${gSubColor}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1;">${g.subtitle}</span>` : ''}
-            </div>
-            <div class="group-content-box" style="background-color:${gRgba}; ${gBlur}; height:${contentHeight}; position:relative; ${freeMode ? 'overflow:visible' : gridStyle} border-radius:15px;">`;
+                <span style="color:${getStyle(g, 'title_color', 'group_title_color')}; font-family:'${gTitleFont}'; font-size:${gTitleSz}px; line-height:1; ${getTextStyleCSS(g, 'group_title')}">${g.title}</span>
+                ${g.subtitle ? `<span style="color:${gSubColor}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1; ${getTextStyleCSS(g, 'group_sub')}">${g.subtitle}</span>` : ''}
+            </div>`;
+        
+        // 纯文本分组
+        if (isTextGroup) {
+            const textContent = g.text_content || g.subtitle || '';
+            html += `<div class="group-content-box" style="background-color:${gRgba}; ${gBlur}; width:${groupWidth}; min-height:${groupHeight !== 'auto' ? groupHeight : 'auto'}; padding:20px; position:relative; border-radius:15px; word-wrap:break-word; white-space:pre-wrap; overflow-wrap:break-word;">
+                <div style="color:${getStyle(g, 'sub_color', 'group_sub_color')}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1.6; text-shadow:${shadowCss};">${textContent}</div>
+            </div>`;
+        } else {
+            // 功能项分组
+            html += `<div class="group-content-box" style="background-color:${gRgba}; ${gBlur}; height:${contentHeight}; width:${groupWidth}; min-height:${groupHeight !== 'auto' ? groupHeight : 'auto'}; position:relative; ${freeMode ? 'overflow:visible' : gridStyle} border-radius:15px;">`;
 
-        (g.items || []).forEach((item, iIdx) => {
-            const iRgba = hexToRgba(getStyle(item, 'bg_color', 'item_bg_color'), (item.bg_alpha !== undefined ? item.bg_alpha : m.item_bg_alpha) / 255);
-            const icon = item.icon ? `<img src="/raw_assets/icons/${item.icon}" class="item-icon" style="${item.icon_size ? `height:${item.icon_size}px` : ''}">` : '';
+            (g.items || []).forEach((item, iIdx) => {
+                // 功能项自定义模糊或使用全局模糊
+                const iItemBlur = item.blur_radius !== undefined ? item.blur_radius : m.item_blur_radius;
+                const iBlur = iItemBlur > 0 ? `backdrop-filter: blur(${iItemBlur}px);` : '';
+                
+                const iRgba = hexToRgba(getStyle(item, 'bg_color', 'item_bg_color'), (item.bg_alpha !== undefined ? item.bg_alpha : m.item_bg_alpha) / 255);
+                const icon = item.icon ? `<img src="/raw_assets/icons/${item.icon}" class="item-icon" style="${item.icon_size ? `height:${item.icon_size}px` : ''}">` : '';
 
-            const iNameSz = getStyle(item, 'name_size', 'item_name_size') || 26;
-            const iDescSz = getStyle(item, 'desc_size', 'item_desc_size') || 16;
-            const iNameFont = cssFont(getStyle(item, 'name_font', 'item_name_font'));
-            const iDescFont = cssFont(getStyle(item, 'desc_font', 'item_desc_font'));
+                const iNameSz = getStyle(item, 'name_size', 'item_name_size') || 26;
+                const iDescSz = getStyle(item, 'desc_size', 'item_desc_size') || 16;
+                const iNameFont = cssFont(getStyle(item, 'name_font', 'item_name_font'));
+                const iDescFont = cssFont(getStyle(item, 'desc_font', 'item_desc_font'));
+                
+                // 处理功能项自定义大小
+                let itemStyles = "";
+                if (item.custom_width !== undefined || item.custom_height !== undefined) {
+                    const itemW = item.custom_width || 'auto';
+                    const itemH = item.custom_height || 'auto';
+                    itemStyles = `width:${itemW}px;height:${itemH}px;`;
+                } else {
+                    itemStyles = `height:90px;`;
+                }
 
-            const txt = `
-                <div class="item-text-content" style="text-shadow:${shadowCss};">
-                    <div style="color:${getStyle(item, 'name_color', 'item_name_color')};font-family:'${iNameFont}';font-size:${iNameSz}px;">${item.name}</div>
-                    <div style="color:${getStyle(item, 'desc_color', 'item_desc_color')};font-family:'${iDescFont}';font-size:${iDescSz}px;margin-top:5px;white-space:pre-wrap;">${item.desc || ''}</div>
-                </div>`;
+                const txt = `
+                    <div class="item-text-content" style="text-shadow:${shadowCss};">
+                        <div style="color:${getStyle(item, 'name_color', 'item_name_color')};font-family:'${iNameFont}';font-size:${iNameSz}px;${getTextStyleCSS(item, 'item_name')}">${item.name}</div>
+                        <div style="color:${getStyle(item, 'desc_color', 'item_desc_color')};font-family:'${iDescFont}';font-size:${iDescSz}px;margin-top:5px;white-space:pre-wrap;${getTextStyleCSS(item, 'item_desc')}">${item.desc || ''}</div>
+                    </div>`;
 
-            if (freeMode) {
-                const isSel = selectedItem.gIdx === gIdx && selectedItem.iIdx === iIdx;
-                html += `<div class="free-item ${isSel ? 'selected' : ''}" id="item-${gIdx}-${iIdx}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;background-color:${iRgba};" onmousedown="initItemDrag(event,${gIdx},${iIdx},'move')">${icon}${txt}${isSel ? `<div class="resize-handle" onmousedown="initItemDrag(event,${gIdx},${iIdx},'resize')"></div>` : ''}</div>`;
-            } else {
-                html += `<div class="grid-item" style="background-color:${iRgba};height:90px;" onclick="openContextEditor('item', ${gIdx}, ${iIdx})">${icon}${txt}</div>`;
+                if (freeMode) {
+                    const isSel = selectedItem.gIdx === gIdx && selectedItem.iIdx === iIdx;
+                    html += `<div class="free-item ${isSel ? 'selected' : ''}" id="item-${gIdx}-${iIdx}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;background-color:${iRgba}; ${iBlur}" onmousedown="initItemDrag(event,${gIdx},${iIdx},'move')">${icon}${txt}${isSel ? `<div class="resize-handle" onmousedown="initItemDrag(event,${gIdx},${iIdx},'resize')"></div>` : ''}</div>`;
+                } else {
+                    html += `<div class="grid-item" style="background-color:${iRgba}; ${iBlur} ${itemStyles}" onclick="openContextEditor('item', ${gIdx}, ${iIdx})">${icon}${txt}</div>`;
+                }
+            });
+
+            if (!freeMode) {
+                html += `<div class="grid-item add-item-btn" onclick="addItem(${gIdx})"><span>+</span></div>`;
             }
-        });
-
-        if (!freeMode) {
-            html += `<div class="grid-item add-item-btn" onclick="addItem(${gIdx})"><span>+</span></div>`;
+            html += `</div>`;
         }
-        html += `</div></div>`;
+        html += `</div>`;
     });
 
     cvs.innerHTML = html;
@@ -804,11 +844,26 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
 }
 
+function getTextStyleCSS(obj, stylePrefix) {
+    let css = '';
+    if (obj[stylePrefix + '_bold']) css += 'font-weight:bold;';
+    if (obj[stylePrefix + '_italic']) css += 'font-style:italic;';
+    if (obj[stylePrefix + '_underline']) css += 'text-decoration:underline;';
+    return css;
+}
+
 function toggleGroupFreeMode(gIdx, isFree) {
     const m = getCurrentMenu();
     m.groups[gIdx].free_mode = isFree;
     renderAll();
     openContextEditor('group', gIdx, -1);
+}
+
+function updateShadowFieldsVisibility(shadowId, isEnabled) {
+    const elem = document.getElementById(shadowId);
+    if (elem) {
+        elem.style.display = isEnabled ? 'block' : 'none';
+    }
 }
 
 function renderSidebarGroupList(m) {
@@ -817,7 +872,12 @@ function renderSidebarGroupList(m) {
     (m.groups || []).forEach((g, idx) => {
         const div = document.createElement("div");
         div.className = "group-item";
-        div.innerHTML = `<div style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"><div style="font-weight:500;">${g.title}${g.free_mode ? ' <span style="font-size:9px;background:#0e639c;padding:1px 3px;border-radius:2px;">自由</span>' : ''}</div></div><div class="group-actions"><span class="icon-btn" onclick="addItem(${idx})">+</span><span class="icon-btn" onclick="moveGroup(${idx}, -1)">↑</span><span class="icon-btn" onclick="moveGroup(${idx}, 1)">↓</span></div>`;
+        const isTextGroup = g.group_type === 'text';
+        const badges = [
+            isTextGroup ? ' <span style="font-size:9px;background:#8b5cf6;padding:1px 3px;border-radius:2px;">纯文本</span>' : '',
+            g.free_mode ? ' <span style="font-size:9px;background:#0e639c;padding:1px 3px;border-radius:2px;">自由</span>' : ''
+        ].join('');
+        div.innerHTML = `<div style="flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"><div style="font-weight:500;">${g.title}${badges}</div></div><div class="group-actions"><span class="icon-btn" onclick="addItem(${idx})">+</span><span class="icon-btn" onclick="moveGroup(${idx}, -1)">↑</span><span class="icon-btn" onclick="moveGroup(${idx}, 1)">↓</span></div>`;
         div.firstElementChild.onclick = () => openContextEditor('group', idx, -1);
         list.appendChild(div);
     });
@@ -836,6 +896,16 @@ function addItem(gIdx) {
     }
     g.items.push({ name: "新功能", desc: "...", icon: "", x: 20, y: nextY, w: 200, h: 80 });
     renderAll();
+}
+
+function moveItem(gIdx, iIdx, dir) {
+    const g = getCurrentMenu().groups[gIdx];
+    if (iIdx + dir < 0 || iIdx + dir >= g.items.length) return;
+    [g.items[iIdx], g.items[iIdx + dir]] = [g.items[iIdx + dir], g.items[iIdx]];
+    renderAll();
+    // 更新选中状态和打开编辑面板
+    selectedItem = { gIdx, iIdx: iIdx + dir };
+    openContextEditor('item', gIdx, iIdx + dir);
 }
 
 function addGroup() {
@@ -917,13 +987,20 @@ function updateProp(type, gIdx, iIdx, key, val) {
     if (val === "") {
         delete obj[key];
     } else {
-        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height'].includes(key)) {
+        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'text_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height', 'blur_radius', 'custom_width', 'custom_height', 'group_title_shadow_offset_x', 'group_title_shadow_offset_y', 'group_title_shadow_radius', 'item_name_shadow_offset_x', 'item_name_shadow_offset_y', 'item_name_shadow_radius', 'item_desc_shadow_offset_x', 'item_desc_shadow_offset_y', 'item_desc_shadow_radius', 'text_bg_alpha', 'text_bg_blur'].includes(key)) {
             val = parseInt(val);
+        }
+        if (key.endsWith('_enabled') || key.endsWith('_bold') || key.endsWith('_italic') || key.endsWith('_underline')) {
+            val = val === true || val === 'true';
         }
         obj[key] = val;
     }
 
     if (key === 'icon') {
+        openContextEditor(type, gIdx, iIdx);
+    } else if (key === 'group_type') {
+        // 当改变分组类型时，刷新编辑面板以显示/隐藏相关字段
+        renderCanvas(m);
         openContextEditor(type, gIdx, iIdx);
     } else {
         renderCanvas(m);
@@ -1185,6 +1262,68 @@ function generatePropForm(type, obj, gIdx, iIdx) {
             </select>
         </div>`;
     };
+    const textStyles = (labelPrefix, keyPrefix) => {
+        const boldVal = obj[keyPrefix + '_bold'] ? 'checked' : '';
+        const italicVal = obj[keyPrefix + '_italic'] ? 'checked' : '';
+        const underlineVal = obj[keyPrefix + '_underline'] ? 'checked' : '';
+        return `
+        <div class="form-row">
+            <label>${labelPrefix} 文本样式</label>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <label style="display:flex;align-items:center;gap:5px;margin:0;cursor:pointer;">
+                    <input type="checkbox" ${boldVal} onchange="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_bold', this.checked)">
+                    <strong>加粗</strong>
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;margin:0;cursor:pointer;">
+                    <input type="checkbox" ${italicVal} onchange="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_italic', this.checked)">
+                    <em>斜体</em>
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;margin:0;cursor:pointer;">
+                    <input type="checkbox" ${underlineVal} onchange="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_underline', this.checked)">
+                    <u>下划线</u>
+                </label>
+            </div>
+        </div>`;
+    };
+    const shadowSettings = (labelPrefix, keyPrefix) => {
+        const enabledVal = obj[keyPrefix + '_shadow_enabled'] ? 'checked' : '';
+        const colorVal = obj[keyPrefix + '_shadow_color'] || '#000000';
+        const offsetXVal = obj[keyPrefix + '_shadow_offset_x'] !== undefined ? obj[keyPrefix + '_shadow_offset_x'] : '';
+        const offsetYVal = obj[keyPrefix + '_shadow_offset_y'] !== undefined ? obj[keyPrefix + '_shadow_offset_y'] : '';
+        const radiusVal = obj[keyPrefix + '_shadow_radius'] !== undefined ? obj[keyPrefix + '_shadow_radius'] : '';
+        const globalMenu = getCurrentMenu();
+        const shadowId = `shadow-${type}-${gIdx}-${iIdx}-${keyPrefix}`;
+        return `
+        <div style="background:#333;padding:10px;border-radius:4px;margin:10px 0;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:5px;margin:0;cursor:pointer;flex:1">
+                    <input type="checkbox" ${enabledVal} onchange="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_shadow_enabled', this.checked); updateShadowFieldsVisibility('${shadowId}', this.checked)">
+                    <strong>${labelPrefix}阴影</strong>
+                    <span style="font-size:10px;color:#aaa">${obj[keyPrefix + '_shadow_enabled'] ? '(自定义)' : '(继承全局)'}</span>
+                </label>
+            </div>
+            <div id="${shadowId}" style="display:${obj[keyPrefix + '_shadow_enabled'] ? 'block' : 'none'};">
+                <div class="form-row" style="margin:5px 0;">
+                    <label style="font-size:12px;">颜色</label>
+                    <input type="color" value="${colorVal}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_shadow_color', this.value)" style="height:30px;cursor:pointer;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:5px 0;">
+                    <div class="form-row" style="margin:0;">
+                        <label style="font-size:12px;">偏移X</label>
+                        <input type="number" value="${offsetXVal}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_shadow_offset_x', this.value)" placeholder="2">
+                    </div>
+                    <div class="form-row" style="margin:0;">
+                        <label style="font-size:12px;">偏移Y</label>
+                        <input type="number" value="${offsetYVal}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_shadow_offset_y', this.value)" placeholder="2">
+                    </div>
+                </div>
+                <div class="form-row" style="margin:5px 0;">
+                    <label style="font-size:12px;">模糊半径</label>
+                    <input type="range" min="0" max="20" value="${radiusVal}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, '${keyPrefix}_shadow_radius', this.value)">
+                </div>
+            </div>
+        </div>`;
+    };
     let html = "";
     if (type === 'title') {
         html += input("主标题内容", "title", obj.title);
@@ -1200,7 +1339,9 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += color("主标题颜色", "title_color", "title_color");
         html += input("主标题大小 (px)", "title_size", obj.title_size, "number");
         html += fonts("主标题字体", "title_font", "title_font");
+        html += textStyles("主标题", "title");
         html += color("副标题颜色", "subtitle_color", "subtitle_color");
+        html += textStyles("副标题", "subtitle");
     } else if (type === 'group') {
         html += input("分组标题", "title", obj.title);
         html += input("副标题", "subtitle", obj.subtitle);
@@ -1219,9 +1360,37 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         </div>`;
 
         html += input("每行列数 (Grid模式)", "layout_columns", obj.layout_columns, "number", "placeholder='默认跟随全局'");
+        
+        // 分组类型选择
+        const isTextGroup = obj.group_type === 'text';
+        html += `<div class="form-row">
+            <label>分组类型</label>
+            <select onchange="updateProp('${type}', ${gIdx}, ${iIdx}, 'group_type', this.value)">
+                <option value="normal" ${(!obj.group_type || obj.group_type === 'normal')?'selected':''}>功能项分组</option>
+                <option value="text" ${obj.group_type === 'text'?'selected':''}>纯文本分组</option>
+            </select>
+        </div>`;
+        
+        // 纯文本分组的文本内容编辑
+        if (isTextGroup) {
+            html += textarea("文本内容", "text_content", obj.text_content || obj.subtitle || "");
+            html += `<hr style="border-color:#444; margin: 20px 0;">`;
+            html += `<div class="section-title">纯文本样式</div>`;
+            html += color("文本颜色", "text_color", "group_sub_color");
+            html += input("文本大小 (px)", "text_size", obj.text_size, "number", "placeholder='默认30'");
+            html += fonts("文本字体", "text_font", "group_sub_font");
+            html += textStyles("文本", "text");
+            
+            html += `<hr style="border-color:#444; margin: 20px 0;">`;
+            html += `<div class="section-title">背景毛玻璃效果</div>`;
+            html += color("背景颜色", "text_bg_color", "group_sub_bg_color");
+            html += input("背景透明度", "text_bg_alpha", obj.text_bg_alpha, "range", "min='0' max='255' placeholder='0-255'");
+            html += input("模糊半径", "text_bg_blur", obj.text_bg_blur, "number", "min='0' placeholder='0-15'");
+        }
+        
         html += `<div class="form-row" style="background:#333;padding:10px;border-radius:4px;margin-top:10px;display:flex;align-items:center;justify-content:space-between">
             <label style="margin:0">✨ 自由排版模式</label>
-            <input type="checkbox" ${obj.free_mode?'checked':''} onclick="toggleGroupFreeMode(${gIdx}, this.checked)" style="width:20px;height:20px;">
+            <input type="checkbox" ${obj.free_mode?'checked':''} onclick="toggleGroupFreeMode(${gIdx}, this.checked)" style="width:20px;height:20px;" ${isTextGroup?'disabled':''}>
         </div>`;
         html += `<button class="btn btn-danger btn-block" style="margin-top:10px" onclick="deleteGroup(${gIdx})">删除此分组</button>`;
         html += `<hr style="border-color:#444; margin: 20px 0;">`;
@@ -1229,10 +1398,20 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += color("标题颜色", "title_color", "group_title_color");
         html += input("标题大小 (px)", "title_size", obj.title_size, "number", "placeholder='默认'");
         html += fonts("标题字体", "title_font", "group_title_font");
+        html += textStyles("标题", "group_title");
         html += color("副标题颜色", "sub_color", "group_sub_color");
         html += input("副标题大小 (px)", "sub_size", obj.sub_size, "number", "placeholder='默认'");
+        html += textStyles("副标题", "group_sub");
+        html += shadowSettings("标题", "group_title");
+        
+        // 毛玻璃设置
+        html += `<hr style="border-color:#444; margin: 20px 0;">`;
+        html += `<div class="section-title">毛玻璃效果</div>`;
         html += color("背景颜色", "bg_color", "group_bg_color");
         html += `<div class="form-row"><label>背景透明度 (0-255)</label><input type="range" max="255" value="${obj.bg_alpha!==undefined?obj.bg_alpha:''}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, 'bg_alpha', this.value)"></div>`;
+        html += input("毛玻璃模糊半径 (px)", "blur_radius", obj.blur_radius, "number", "placeholder='默认继承全局'");
+        html += input("自定义宽度 (px)", "custom_width", obj.custom_width, "number", "placeholder='默认自适应'");
+        html += input("自定义高度 (px)", "custom_height", obj.custom_height, "number", "placeholder='默认自适应'");
     } else {
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
@@ -1259,17 +1438,40 @@ function generatePropForm(type, obj, gIdx, iIdx) {
             html += input("图标高度 (px)", "icon_size", obj.icon_size, "number", "placeholder='默认自适应'");
         }
 
+        // 在非自由模式下显示顺序调整按钮
+        const m = getCurrentMenu();
+        const grp = m.groups[gIdx];
+        if (!grp.free_mode) {
+            const canMoveUp = iIdx > 0;
+            const canMoveDown = iIdx < grp.items.length - 1;
+            html += `<div class="form-row" style="display:flex;gap:5px;">
+                <button class="btn btn-secondary" ${!canMoveUp ? 'disabled' : ''} onclick="moveItem(${gIdx}, ${iIdx}, -1)">⬆ 前进一位</button>
+                <button class="btn btn-secondary" ${!canMoveDown ? 'disabled' : ''} onclick="moveItem(${gIdx}, ${iIdx}, 1)">⬇ 后退一位</button>
+            </div>`;
+        }
+
         html += `<button class="btn btn-danger btn-block" style="margin-top:10px" onclick="deleteCurrentItemProp(${gIdx}, ${iIdx})">删除此功能项</button>`;
         html += `<hr style="border-color:#444; margin: 20px 0;">`;
         html += `<div class="section-title">样式覆盖 (独立设置)</div>`;
         html += color("名称颜色", "name_color", "item_name_color");
         html += input("名称大小 (px)", "name_size", obj.name_size, "number", "placeholder='默认'");
         html += fonts("名称字体", "name_font", "item_name_font");
+        html += textStyles("名称", "item_name");
         html += color("描述颜色", "desc_color", "item_desc_color");
         html += input("描述大小 (px)", "desc_size", obj.desc_size, "number", "placeholder='默认'");
         html += fonts("描述字体", "desc_font", "item_desc_font");
+        html += textStyles("描述", "item_desc");
+        html += shadowSettings("名称", "item_name");
+        html += shadowSettings("描述", "item_desc");
+        
+        // 毛玻璃效果
+        html += `<hr style="border-color:#444; margin: 20px 0;">`;
+        html += `<div class="section-title">毛玻璃效果</div>`;
         html += color("背景颜色", "bg_color", "item_bg_color");
         html += `<div class="form-row"><label>背景透明度 (0-255)</label><input type="range" max="255" value="${obj.bg_alpha!==undefined?obj.bg_alpha:''}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, 'bg_alpha', this.value)"></div>`;
+        html += input("毛玻璃模糊半径 (px)", "blur_radius", obj.blur_radius, "number", "placeholder='默认继承全局'");
+        html += input("自定义宽度 (px)", "custom_width", obj.custom_width, "number", "placeholder='默认自适应'");
+        html += input("自定义高度 (px)", "custom_height", obj.custom_height, "number", "placeholder='默认自适应'");
     }
     return html;
 }
@@ -1476,10 +1678,12 @@ let imagePickerCallback = null;
 let imagePickerCurrentValue = '';
 let imagePickerImages = [];  // 缓存当前图片列表
 let imagePickerBasePath = '';  // 缓存当前路径
+let imagePickerType = '';  // 缓存当前资源类型 (background, icon, widget, font, video)
 
 function openImagePicker(type, currentValue, callback) {
     imagePickerCallback = callback;
     imagePickerCurrentValue = currentValue;
+    imagePickerType = type;  // 保存资源类型
     
     let images = [];
     let basePath = '';
@@ -1549,11 +1753,39 @@ function renderImagePickerGrid(images, basePath, currentValue) {
         const isSelected = img === currentValue;
         const item = document.createElement('div');
         item.className = 'image-picker-item' + (isSelected ? ' selected' : '');
-        item.innerHTML = `
+        item.style.position = 'relative';
+        
+        const imgHtml = `
             <img src="${basePath}${img}" style="width:80px;height:80px;object-fit:cover;border-radius:4px;">
-            <span title="${img}">${img.length > 12 ? img.substring(0, 10) + '...' : img}</span>
+            <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;" title="${img}">${img}</span>
         `;
-        item.onclick = function() { doSelectImage(img); };
+        
+        // 添加操作按钮
+        const actionButtons = `
+            <div style="position:absolute;top:0;right:0;background:rgba(0,0,0,0.7);border-radius:0 4px;padding:2px;display:flex;gap:2px;opacity:0;transition:opacity 0.3s;" class="asset-actions">
+                <button class="btn btn-xs" style="padding:2px 4px;font-size:10px;color:#fff;" onclick="downloadAsset('${imagePickerType}', '${img.replace(/'/g, "\\'")}'); return false;" title="下载">📥</button>
+                <button class="btn btn-xs btn-danger" style="padding:2px 4px;font-size:10px;color:#fff;" onclick="deleteAssetAndRefresh('${imagePickerType}', '${img.replace(/'/g, "\\'")}'); return false;" title="删除">🗑</button>
+            </div>
+        `;
+        
+        item.innerHTML = imgHtml + actionButtons;
+        item.style.cursor = 'pointer';
+        
+        // 添加鼠标事件
+        item.onmouseenter = function() {
+            this.querySelector('.asset-actions').style.opacity = '1';
+        };
+        item.onmouseleave = function() {
+            this.querySelector('.asset-actions').style.opacity = '0';
+        };
+        
+        // 点击选择
+        item.querySelector('img').parentElement.onclick = function(e) {
+            if (!e.target.closest('.asset-actions')) {
+                doSelectImage(img);
+            }
+        };
+        
         container.appendChild(item);
     });
 }
@@ -1583,6 +1815,41 @@ function doSelectImage(value) {
 function closeImagePicker() {
     document.getElementById('imagePickerModal').style.display = 'none';
     imagePickerCallback = null;
+}
+
+async function downloadAsset(type, filename) {
+    try {
+        const response = await api("/download_asset", "POST", { type, filename });
+        // 下载文件
+        const url = window.URL.createObjectURL(response);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        alert("❌ 下载失败: " + e);
+    }
+}
+
+async function deleteAssetAndRefresh(type, filename) {
+    if (!confirm(`确定要删除文件 "${filename}" 吗？此操作不可逆。`)) return;
+    
+    try {
+        await api("/delete_asset", "POST", { type, filename });
+        alert("✅ 文件已删除");
+        await loadAssets();
+        initFonts();
+        renderAll();
+        // 重新打开图片选择器
+        if (imagePickerType) {
+            openImagePicker(imagePickerType, imagePickerCurrentValue, imagePickerCallback);
+        }
+    } catch (e) {
+        alert("❌ 删除失败: " + e);
+    }
 }
 
 // 专用选择器函数（用于 HTML onclick 调用）

@@ -150,6 +150,13 @@
                 <!-- 图片专用面板 -->
                 <div id="panel-bg-image">
                     <div class="form-row">
+                        <label>背景自定义大小</label>
+                        <div class="form-grid-2">
+                            <div><label style="font-size:12px;">宽 (px)</label><input type="number" id="bgCustomW" oninput="updateMenuMeta('bg_custom_width', this.value)" placeholder="留空=自适应"></div>
+                            <div><label style="font-size:12px;">高 (px)</label><input type="number" id="bgCustomH" oninput="updateMenuMeta('bg_custom_height', this.value)" placeholder="留空=自适应"></div>
+                        </div>
+                    </div>
+                    <div class="form-row">
                         <label>选择背景图片</label>
                         <div style="display:flex; gap:5px; align-items:center;">
                             <div id="bgSelectPreview" style="flex:1;"></div>
@@ -219,6 +226,12 @@
             </div>
 
             <div class="section">
+                <div class="section-title">元素自定义大小 (默认值)</div>
+                <div class="form-row"><label>分组默认大小</label><div class="form-grid-2"><div><label style="font-size:12px;">宽 (px)</label><input type="number" id="groupCustomW" oninput="updateMenuMeta('group_custom_width', this.value)" placeholder="留空=自适应"></div><div><label style="font-size:12px;">高 (px)</label><input type="number" id="groupCustomH" oninput="updateMenuMeta('group_custom_height', this.value)" placeholder="留空=自适应"></div></div></div>
+                <div class="form-row"><label>功能项默认大小</label><div class="form-grid-2"><div><label style="font-size:12px;">宽 (px)</label><input type="number" id="itemCustomW" oninput="updateMenuMeta('item_custom_width', this.value)" placeholder="留空=自适应"></div><div><label style="font-size:12px;">高 (px)</label><input type="number" id="itemCustomH" oninput="updateMenuMeta('item_custom_height', this.value)" placeholder="留空=自适应"></div></div></div>
+            </div>
+
+            <div class="section">
                 <div class="section-title">全局配色 (默认值)</div>
                 <div class="form-row"><label>🎨 主标题颜色</label><div class="color-picker-row"><input type="color" id="cTitleP" oninput="updateColor('title_color', this.value, 'pick')"><input type="text" id="cTitleT" class="color-value" oninput="updateColor('title_color', this.value, 'text')"></div></div>
                 <div class="form-row"><label>🎨 副标题颜色</label><div class="color-picker-row"><input type="color" id="cSubP" oninput="updateColor('subtitle_color', this.value, 'pick')"><input type="text" id="cSubT" class="color-value" oninput="updateColor('subtitle_color', this.value, 'text')"></div></div>
@@ -234,8 +247,16 @@
                 <div class="form-row"><label>分组标题字体</label><select id="fGTitle" onchange="updateMenuMeta('group_title_font', this.value)"></select></div>
                 <div class="form-row"><label>分组副标题字体</label><select id="fGSub" onchange="updateMenuMeta('group_sub_font', this.value)"></select></div>
 
+                <!-- 纯文本分组背景效果 -->
+                <div class="section-title" style="margin-top:15px;">纯文本分组背景效果</div>
+                <div class="form-row"><label>🎨 背景颜色</label><div class="color-picker-row"><input type="color" id="cTextBgP" oninput="updateColor('group_sub_bg_color', this.value, 'pick')"><input type="text" id="cTextBgT" class="color-value" oninput="updateColor('group_sub_bg_color', this.value, 'text')"></div></div>
+                <div class="form-grid-2">
+                    <div><label>背景透明度</label><input type="range" min="0" max="255" id="textBgAlpha" oninput="updateMenuMeta('group_sub_bg_alpha', this.value)" value="200"></div>
+                    <div><label>模糊半径</label><input type="number" min="0" max="15" id="textBgBlur" oninput="updateMenuMeta('group_sub_bg_blur', this.value)" placeholder="5"></div>
+                </div>
+
                 <!-- 新增全局副标题对齐 -->
-                <div class="form-row"><label>分组副标题默认对齐</label>
+                <div class="form-row" style="margin-top:15px;"><label>分组副标题默认对齐</label>
                     <select id="fGSubAlign" onchange="updateMenuMeta('group_sub_align', this.value)">
                         <option value="bottom">底对齐 (Bottom)</option>
                         <option value="center">居中 (Center)</option>

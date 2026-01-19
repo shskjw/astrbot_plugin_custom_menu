@@ -1,7 +1,7 @@
 import traceback
 import imageio
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -80,6 +80,14 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
     _safe_multiline_text(draw, (x, y), text, font, fill=fill, anchor=anchor, spacing=spacing)
 
 
+def get_text_style_str(obj, style_prefix):
+    """从对象中获取文本样式信息（粗体、斜体、下划线）"""
+    bold = obj.get(style_prefix + '_bold', False)
+    italic = obj.get(style_prefix + '_italic', False)
+    underline = obj.get(style_prefix + '_underline', False)
+    return {'bold': bold, 'italic': italic, 'underline': underline}
+
+
 def draw_glass_rect(base_img: Image.Image, box: tuple, color_hex: str, alpha: int, radius: int, corner_r=15):
     overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
@@ -140,7 +148,7 @@ def wrap_text_to_width(text: str, font, max_width: int, draw) -> str:
     return '\n'.join(wrapped_lines)
 
 
-def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, scale):
+def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, menu_data, scale):
     x, y, x2, y2 = box
     w, h = x2 - x, y2 - y
     icon_name = item.get("icon", "")
@@ -197,16 +205,44 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, sca
     gap = int(5 * scale)
     total_text_height = name_h + (desc_h + gap if desc else 0)
     text_start_y = y + (h - total_text_height) / 2
+    
+    # 获取功能项名称和描述的阴影配置
+    name_shadow = get_shadow_config(item, menu_data, 'item_name')
+    desc_shadow = get_shadow_config(item, menu_data, 'item_desc')
 
     if name: draw_text_with_shadow(draw, (text_start_x, text_start_y), name, name_font, fonts_map["name_color"],
-                                   shadow_cfg, scale=scale)
+                                   name_shadow, scale=scale)
     if desc: draw_text_with_shadow(draw, (text_start_x, text_start_y + name_h + gap), desc, desc_font,
-                                   fonts_map["desc_color"], shadow_cfg, spacing=line_spacing, scale=scale)
+                                   fonts_map["desc_color"], desc_shadow, spacing=line_spacing, scale=scale)
 
 
 def get_style(obj: dict, menu: dict, key: str, fallback_key: str, default=None):
     val = obj.get(key)
     return val if val is not None and val != "" else menu.get(fallback_key, default)
+
+
+def get_shadow_config(obj: dict, menu: dict, shadow_prefix: str):
+    """获取元素级或全局阴影配置"""
+    # 检查是否有元素级阴影启用标志
+    shadow_key = shadow_prefix + '_shadow_enabled'
+    if shadow_key in obj and obj[shadow_key]:
+        # 使用元素级阴影配置
+        return {
+            'enabled': True,
+            'color': obj.get(shadow_prefix + '_shadow_color', menu.get('shadow_color', '#000000')),
+            'offset_x': obj.get(shadow_prefix + '_shadow_offset_x', menu.get('shadow_offset_x', 2)),
+            'offset_y': obj.get(shadow_prefix + '_shadow_offset_y', menu.get('shadow_offset_y', 2)),
+            'radius': obj.get(shadow_prefix + '_shadow_radius', menu.get('shadow_radius', 2))
+        }
+    else:
+        # 使用全局阴影配置
+        return {
+            'enabled': menu.get('shadow_enabled', False),
+            'color': menu.get('shadow_color', '#000000'),
+            'offset_x': menu.get('shadow_offset_x', 2),
+            'offset_y': menu.get('shadow_offset_y', 2),
+            'radius': menu.get('shadow_radius', 2)
+        }
 
 
 def _calculate_bg_layout(src_w: int, src_h: int, canvas_w: int, canvas_h: int,
@@ -300,10 +336,25 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
 
     for group in menu_data.get("groups", []):
         is_free = group.get("free_mode", False)
+        is_text_group = group.get("group_type") == "text"
         items, g_cols = group.get("items", []), group.get("layout_columns") or columns
         g_title_size = s(int(get_style(group, menu_data, 'title_size', 'group_title_size', 30)))
         box_start_y = current_y + g_title_size + s(20)
-        if is_free:
+        
+        if is_text_group:
+            # 纯文本分组 - 自适应高度
+            text_content = group.get("text_content", "")
+            gsf = load_font(get_style(group, menu_data, 'sub_font', 'group_sub_font', 'text.ttf'),
+                           s(int(get_style(group, menu_data, 'sub_size', 'group_sub_size', 18))))
+            temp_draw = ImageDraw.Draw(Image.new("RGBA", (final_w - PADDING_X * 2, 1)))
+            
+            if hasattr(temp_draw, "multiline_textbbox"):
+                bbox = temp_draw.multiline_textbbox((0, 0), text_content, font=gsf, spacing=4)
+                content_h = bbox[3] - bbox[1] + s(40)
+            else:
+                _, text_h = temp_draw.multiline_textsize(text_content, font=gsf, spacing=4)
+                content_h = text_h + s(40)
+        elif is_free:
             max_bottom = max((s(int(item.get("y", 0))) + s(int(item.get("h", 100))) for item in items), default=0)
             content_h = max(s(int(group.get("min_height", 100))), max_bottom + s(20))
         elif items:
@@ -313,7 +364,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
             content_h = s(50)
         group_layout_info.append({"data": group, "title_y": current_y,
                                   "box_rect": (PADDING_X, box_start_y, final_w - PADDING_X, box_start_y + content_h),
-                                  "is_free": is_free, "columns": g_cols})
+                                  "is_free": is_free, "is_text_group": is_text_group, "columns": g_cols})
         current_y = box_start_y + content_h + GROUP_GAP
 
     content_final_h = current_y + s(50)
@@ -340,18 +391,39 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     al = menu_data.get("title_align", "center")
     tx = {"left": PADDING_X, "right": final_w - PADDING_X, "center": final_w / 2}[al]
     anc = {"left": "lt", "right": "rt", "center": "mt"}[al]
+    
+    # 获取主标题的阴影配置
+    title_shadow = get_shadow_config(menu_data, menu_data, 'title')
     draw_text_with_shadow(draw_ov, (tx, TITLE_TOP_MARGIN), menu_data.get("title", ""), tf,
-                          hex_to_rgb(menu_data.get("title_color")), shadow_cfg, anchor=anc, scale=scale)
+                          hex_to_rgb(menu_data.get("title_color")), title_shadow, anchor=anc, scale=scale)
+    
+    # 获取副标题的阴影配置
+    subtitle_shadow = get_shadow_config(menu_data, menu_data, 'subtitle')
     draw_text_with_shadow(draw_ov, (tx, TITLE_TOP_MARGIN + title_size + s(10)), menu_data.get("sub_title", ""), sf,
-                          hex_to_rgb(menu_data.get("subtitle_color")), shadow_cfg, anchor=anc, scale=scale)
+                          hex_to_rgb(menu_data.get("subtitle_color")), subtitle_shadow, anchor=anc, scale=scale)
 
     for g_info in group_layout_info:
         grp = g_info["data"]
         bx, by, bx2, by2 = g_info["box_rect"]
         bw = bx2 - bx
-        draw_glass_rect(overlay, g_info["box_rect"], get_style(grp, menu_data, 'bg_color', 'group_bg_color', '#000000'),
+        is_text_group = g_info.get("is_text_group", False)
+        
+        # 使用分组自定义模糊半径或全局模糊半径
+        group_blur = get_style(grp, menu_data, 'blur_radius', 'group_blur_radius', 0)
+        
+        # 处理分组自定义大小
+        group_custom_w = grp.get("custom_width") or menu_data.get("group_custom_width")
+        group_custom_h = grp.get("custom_height") or menu_data.get("group_custom_height")
+        
+        # 如果设置了自定义大小，使用自定义大小；否则使用计算的矩形
+        if group_custom_w and group_custom_h:
+            bx2 = bx + s(int(group_custom_w))
+            by2 = by + s(int(group_custom_h))
+            bw = bx2 - bx
+        
+        draw_glass_rect(overlay, (bx, by, bx2, by2), get_style(grp, menu_data, 'bg_color', 'group_bg_color', '#000000'),
                         get_style(grp, menu_data, 'bg_alpha', 'group_bg_alpha', 50),
-                        menu_data.get("group_blur_radius", 0), corner_r=s(15))
+                        group_blur, corner_r=s(15))
 
         gtf = load_font(get_style(grp, menu_data, 'title_font', 'group_title_font', 'text.ttf'),
                         s(int(get_style(grp, menu_data, 'title_size', 'group_title_size', 30))))
@@ -362,30 +434,99 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
         sub_text = grp.get("subtitle", "")
         ty = g_info["title_y"] + s(10)
         title_x = bx + s(10)
+        
+        # 获取分组标题的阴影配置
+        group_title_shadow = get_shadow_config(grp, menu_data, 'group_title')
 
         draw_text_with_shadow(draw_ov, (title_x, ty), title_text, gtf,
                               hex_to_rgb(get_style(grp, menu_data, 'title_color', 'group_title_color', '#FFFFFF')),
-                              shadow_cfg, scale=scale)
+                              group_title_shadow, scale=scale)
 
-        if sub_text:
-            try:
-                if hasattr(draw_ov, "textbbox"):
-                    bbox = draw_ov.textbbox((0, 0), title_text, font=gtf)
-                    title_w = bbox[2] - bbox[0]
-                    title_h = bbox[3] - bbox[1]
+        if is_text_group:
+            # 纯文本分组处理
+            text_content = grp.get("text_content", "")
+            text_y = by + s(20)
+            text_x = bx + s(20)
+            max_text_width = bx2 - text_x - s(20)
+            
+            # 获取纯文本的字体、颜色、大小 - 优先从分组属性读取，再从全局设置读取
+            text_font_name = grp.get("text_font") or menu_data.get("group_sub_font", "text.ttf")
+            text_font_size_val = grp.get("text_size")
+            if text_font_size_val:
+                text_font_size = int(text_font_size_val)
+            else:
+                text_font_size = int(menu_data.get("group_sub_size", 30))
+            
+            # 获取文本样式（粗体、斜体、下划线）
+            text_bold = grp.get("text_bold", False)
+            text_italic = grp.get("text_italic", False)
+            text_underline = grp.get("text_underline", False)
+            
+            text_font = load_font(text_font_name, s(text_font_size))
+            text_color_hex = grp.get("text_color") or menu_data.get("group_sub_color", '#AAAAAA')
+            text_color = hex_to_rgb(text_color_hex)
+            
+            # 绘制纯文本内容，支持自动换行
+            if text_content and max_text_width > 0:
+                text_content = wrap_text_to_width(text_content, text_font, max_text_width, draw_ov)
+            
+            # 获取纯文本的阴影配置
+            text_shadow = get_shadow_config(grp, menu_data, 'group_sub')
+            
+            # 获取纯文本的背景毛玻璃效果配置
+            text_bg_color = grp.get("text_bg_color") or menu_data.get("group_sub_bg_color", "#333333")
+            text_bg_alpha = int(grp.get("text_bg_alpha", menu_data.get("group_sub_bg_alpha", 200)))
+            text_bg_blur = int(grp.get("text_bg_blur", menu_data.get("group_sub_bg_blur", 5)))
+            
+            # 如果启用背景毛玻璃效果，先绘制背景
+            if text_bg_alpha > 0 and text_bg_blur >= 0:
+                # 计算背景区域（文本周围留一些边距）
+                bg_padding = s(10)
+                bg_x1 = max(bx, text_x - bg_padding)
+                bg_y1 = max(by, text_y - bg_padding)
+                bg_x2 = min(bx2, text_x + max_text_width + bg_padding)
+                bg_y2 = min(by2, text_y + s(100) + bg_padding)  # 假设最大高度
+                
+                # 绘制背景矩形 (毛玻璃效果)
+                bg_rgb = hex_to_rgb(text_bg_color)
+                if text_bg_blur > 0:
+                    # 模糊背景 (使用简单的半透明填充模拟毛玻璃)
+                    blur_image = Image.new('RGBA', (img.width, img.height), (0, 0, 0, 0))
+                    blur_draw = ImageDraw.Draw(blur_image)
+                    blur_draw.rectangle([(bg_x1, bg_y1), (bg_x2, bg_y2)], 
+                                       fill=(bg_rgb[0], bg_rgb[1], bg_rgb[2], text_bg_alpha))
+                    
+                    # 对模糊图像应用高斯模糊
+                    blur_image = blur_image.filter(ImageFilter.GaussianBlur(radius=text_bg_blur))
+                    img.paste(blur_image, (0, 0), blur_image)
                 else:
-                    title_w, title_h = draw_ov.textsize(title_text, font=gtf)
-            except:
-                title_w, title_h = 100, 30
+                    # 不模糊，直接填充
+                    draw_ov.rectangle([(bg_x1, bg_y1), (bg_x2, bg_y2)], 
+                                     fill=(bg_rgb[0], bg_rgb[1], bg_rgb[2], text_bg_alpha))
+            
+            draw_text_with_shadow(draw_ov, (text_x, text_y), text_content or "", text_font,
+                                 text_color, text_shadow, scale=scale)
+        else:
+            # 功能项分组处理
+            if sub_text:
+                try:
+                    if hasattr(draw_ov, "textbbox"):
+                        bbox = draw_ov.textbbox((0, 0), title_text, font=gtf)
+                        title_w = bbox[2] - bbox[0]
+                        title_h = bbox[3] - bbox[1]
+                    else:
+                        title_w, title_h = draw_ov.textsize(title_text, font=gtf)
+                except:
+                    title_w, title_h = 100, 30
 
-            try:
-                if hasattr(draw_ov, "textbbox"):
-                    s_bbox = draw_ov.textbbox((0, 0), sub_text, font=gsf)
-                    sub_h = s_bbox[3] - s_bbox[1]
-                else:
-                    _, sub_h = draw_ov.textsize(sub_text, font=gsf)
-            except:
-                sub_h = 18
+                try:
+                    if hasattr(draw_ov, "textbbox"):
+                        s_bbox = draw_ov.textbbox((0, 0), sub_text, font=gsf)
+                        sub_h = s_bbox[3] - s_bbox[1]
+                    else:
+                        _, sub_h = draw_ov.textsize(sub_text, font=gsf)
+                except:
+                    sub_h = 18
 
             align = get_style(grp, menu_data, 'sub_align', 'group_sub_align', 'bottom')
 
@@ -396,24 +537,37 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                 sub_y = ty + title_h - sub_h - s(2)
             elif align == 'center':
                 sub_y = ty + (title_h - sub_h) / 2
-
+            
+            # 获取分组副标题的阴影配置
+            group_sub_shadow = get_shadow_config(grp, menu_data, 'group_sub')
             draw_text_with_shadow(draw_ov, (sub_x, sub_y), sub_text, gsf,
                                   hex_to_rgb(get_style(grp, menu_data, 'sub_color', 'group_sub_color', '#AAAAAA')),
-                                  shadow_cfg, scale=scale)
+                                  group_sub_shadow, scale=scale)
 
-        item_grid_w = (bw - s(40) - (g_info["columns"] - 1) * ITEM_GAP_X) // g_info["columns"]
-        for i, item in enumerate(grp.get("items", [])):
-            if g_info["is_free"]:
-                ix, iy, iw, ih = bx + s(int(item.get("x", 0))), by + s(int(item.get("y", 0))), s(
-                    int(item.get("w", 100))), s(int(item.get("h", 100)))
-            else:
-                r, c = i // g_info["columns"], i % g_info["columns"]
-                ix, iy, iw, ih = bx + s(20) + c * (item_grid_w + ITEM_GAP_X), by + s(20) + r * (
-                        ITEM_H + ITEM_GAP_Y), item_grid_w, ITEM_H
-            draw_glass_rect(overlay, (ix, iy, ix + iw, iy + ih),
-                            get_style(item, menu_data, 'bg_color', 'item_bg_color', '#FFFFFF'),
-                            get_style(item, menu_data, 'bg_alpha', 'item_bg_alpha', 20),
-                            menu_data.get("item_blur_radius", 0), corner_r=s(10))
+            item_grid_w = (bw - s(40) - (g_info["columns"] - 1) * ITEM_GAP_X) // g_info["columns"]
+            for i, item in enumerate(grp.get("items", [])):
+                if g_info["is_free"]:
+                    ix, iy, iw, ih = bx + s(int(item.get("x", 0))), by + s(int(item.get("y", 0))), s(
+                        int(item.get("w", 100))), s(int(item.get("h", 100)))
+                else:
+                    r, c = i // g_info["columns"], i % g_info["columns"]
+                    ix, iy, iw, ih = bx + s(20) + c * (item_grid_w + ITEM_GAP_X), by + s(20) + r * (
+                            ITEM_H + ITEM_GAP_Y), item_grid_w, ITEM_H
+                
+                # 处理功能项自定义大小
+                item_custom_w = item.get("custom_width") or menu_data.get("item_custom_width")
+                item_custom_h = item.get("custom_height") or menu_data.get("item_custom_height")
+                if item_custom_w and item_custom_h:
+                    iw = s(int(item_custom_w))
+                    ih = s(int(item_custom_h))
+                
+                # 使用功能项自定义模糊半径或全局模糊半径
+                item_blur = get_style(item, menu_data, 'blur_radius', 'item_blur_radius', 0)
+                
+                draw_glass_rect(overlay, (ix, iy, ix + iw, iy + ih),
+                                get_style(item, menu_data, 'bg_color', 'item_bg_color', '#FFFFFF'),
+                                get_style(item, menu_data, 'bg_alpha', 'item_bg_alpha', 20),
+                                item_blur, corner_r=s(10))
             fmap = {
                 "name": load_font(get_style(item, menu_data, 'name_font', 'item_name_font', 'title.ttf'),
                                   s(get_style(item, menu_data, 'name_size', 'item_name_size', 26))),
@@ -422,7 +576,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                 "name_color": hex_to_rgb(get_style(item, menu_data, 'name_color', 'item_name_color', '#FFFFFF')),
                 "desc_color": hex_to_rgb(get_style(item, menu_data, 'desc_color', 'item_desc_color', '#AAAAAA')),
             }
-            render_item_content(overlay, draw_ov, item, (ix, iy, ix + iw, iy + ih), fmap, shadow_cfg, scale)
+            render_item_content(overlay, draw_ov, item, (ix, iy, ix + iw, iy + ih), fmap, shadow_cfg, menu_data, scale)
     for w in menu_data.get("custom_widgets", []):
         try:
             wx, wy = s(int(w.get("x", 0))), s(int(w.get("y", 0)))

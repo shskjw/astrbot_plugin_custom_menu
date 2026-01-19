@@ -100,6 +100,8 @@ async function exportImage() {
         // 视频导出提示
         if (menu.bg_type === 'video') {
             alert("⏳ 正在生成动态视频菜单...\n这可能需要几十秒时间，请耐心等待浏览器下载提示。");
+        } else {
+            alert("⏳ 正在导出菜单图片...\n请耐心等待浏览器下载提示。");
         }
 
         const res = await fetch("/api/export_image", {
@@ -469,6 +471,7 @@ function updateFormInputs(m) {
     if(document.getElementById("ialphaVal")) document.getElementById("ialphaVal").innerText = m.item_bg_alpha !== undefined ? m.item_bg_alpha : 20;
 
     renderSelect("fTitle", appState.assets.fonts, m.title_font);
+    renderSelect("fSubtitle", appState.assets.fonts, m.subtitle_font);
     renderSelect("fGTitle", appState.assets.fonts, m.group_title_font);
     renderSelect("fGSub", appState.assets.fonts, m.group_sub_font);
     setValue("fGSubAlign", m.group_sub_align || "bottom");
@@ -699,6 +702,7 @@ function renderCanvas(m) {
     }
 
     const gfTitle = cssFont(m.title_font);
+    const gfSubtitle = cssFont(m.subtitle_font || m.title_font);
     const titleAlign = m.title_align || 'center';
     const titleSz = m.title_size || 60;
     const subSz = m.subtitle_size !== undefined ? m.subtitle_size : (titleSz * 0.5);
@@ -707,7 +711,7 @@ function renderCanvas(m) {
         <div class="header-area title-clickable" style="text-align:${titleAlign};"
              onclick="openContextEditor('title')">
             <div style="color:${m.title_color}; font-family:'${gfTitle}'; font-size:${titleSz}px; text-shadow:${titleShadowCss}; ${getTextStyleCSS(m, 'title')}">${m.title}</div>
-            <div style="color:${m.subtitle_color}; font-family:'${gfTitle}'; font-size:${subSz}px; text-shadow:${subShadowCss}; ${getTextStyleCSS(m, 'subtitle')}">${m.sub_title}</div>
+            <div style="color:${m.subtitle_color}; font-family:'${gfSubtitle}'; font-size:${subSz}px; text-shadow:${subShadowCss}; ${getTextStyleCSS(m, 'subtitle')}">${m.sub_title}</div>
         </div>
     `;
 

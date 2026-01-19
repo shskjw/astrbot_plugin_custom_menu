@@ -409,7 +409,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     draw_ov = ImageDraw.Draw(overlay)
 
     tf = load_font(menu_data.get("title_font", "title.ttf"), title_size)
-    sf = load_font(menu_data.get("title_font", "title.ttf"), int(title_size * 0.5))
+    sf = load_font(menu_data.get("subtitle_font") or menu_data.get("title_font", "title.ttf"), int(title_size * 0.5))
     al = menu_data.get("title_align", "center")
     tx = {"left": PADDING_X, "right": final_w - PADDING_X, "center": final_w / 2}[al]
     anc = {"left": "lt", "right": "rt", "center": "mt"}[al]
@@ -594,15 +594,17 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                                 get_style(item, menu_data, 'bg_color', 'item_bg_color', '#FFFFFF'),
                                 get_style(item, menu_data, 'bg_alpha', 'item_bg_alpha', 20),
                                 item_blur, corner_r=s(10))
-            fmap = {
-                "name": load_font(get_style(item, menu_data, 'name_font', 'item_name_font', 'title.ttf'),
-                                  s(get_style(item, menu_data, 'name_size', 'item_name_size', 26))),
-                "desc": load_font(get_style(item, menu_data, 'desc_font', 'item_desc_font', 'text.ttf'),
-                                  s(get_style(item, menu_data, 'desc_size', 'item_desc_size', 16))),
-                "name_color": hex_to_rgb(get_style(item, menu_data, 'name_color', 'item_name_color', '#FFFFFF')),
-                "desc_color": hex_to_rgb(get_style(item, menu_data, 'desc_color', 'item_desc_color', '#AAAAAA')),
-            }
-            render_item_content(overlay, draw_ov, item, (ix, iy, ix + iw, iy + ih), fmap, shadow_cfg, menu_data, scale)
+                
+                # 为每个功能项构建字体和颜色配置
+                fmap = {
+                    "name": load_font(get_style(item, menu_data, 'name_font', 'item_name_font', 'title.ttf'),
+                                      s(get_style(item, menu_data, 'name_size', 'item_name_size', 26))),
+                    "desc": load_font(get_style(item, menu_data, 'desc_font', 'item_desc_font', 'text.ttf'),
+                                      s(get_style(item, menu_data, 'desc_size', 'item_desc_size', 16))),
+                    "name_color": hex_to_rgb(get_style(item, menu_data, 'name_color', 'item_name_color', '#FFFFFF')),
+                    "desc_color": hex_to_rgb(get_style(item, menu_data, 'desc_color', 'item_desc_color', '#AAAAAA')),
+                }
+                render_item_content(overlay, draw_ov, item, (ix, iy, ix + iw, iy + ih), fmap, shadow_cfg, menu_data, scale)
     for w in menu_data.get("custom_widgets", []):
         try:
             wx, wy = s(int(w.get("x", 0))), s(int(w.get("y", 0)))

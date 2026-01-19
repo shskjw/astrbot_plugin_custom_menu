@@ -36,8 +36,9 @@ def hex_to_rgb(hex_color):
     hex_color = (hex_color or "#000000").lstrip('#')
     try:
         if len(hex_color) == 6: return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+        if len(hex_color) == 3: return tuple(int(c * 2, 16) for c in hex_color)
     except:
-        return 30, 30, 30
+        pass
     return 30, 30, 30
 
 
@@ -418,13 +419,13 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     title_shadow = get_shadow_config(menu_data, menu_data, 'title')
     title_styles = get_text_style_str(menu_data, 'title')
     draw_text_with_shadow(draw_ov, (tx, TITLE_TOP_MARGIN), menu_data.get("title", ""), tf,
-                          hex_to_rgb(menu_data.get("title_color")), title_shadow, anchor=anc, scale=scale, text_styles=title_styles)
+                          hex_to_rgb(menu_data.get("title_color") or "#FFFFFF"), title_shadow, anchor=anc, scale=scale, text_styles=title_styles)
     
     # 获取副标题的阴影配置和样式
     subtitle_shadow = get_shadow_config(menu_data, menu_data, 'subtitle')
     subtitle_styles = get_text_style_str(menu_data, 'subtitle')
     draw_text_with_shadow(draw_ov, (tx, TITLE_TOP_MARGIN + title_size + s(10)), menu_data.get("sub_title", ""), sf,
-                          hex_to_rgb(menu_data.get("subtitle_color")), subtitle_shadow, anchor=anc, scale=scale, text_styles=subtitle_styles)
+                          hex_to_rgb(menu_data.get("subtitle_color") or "#FFFFFF"), subtitle_shadow, anchor=anc, scale=scale, text_styles=subtitle_styles)
 
     for g_info in group_layout_info:
         grp = g_info["data"]

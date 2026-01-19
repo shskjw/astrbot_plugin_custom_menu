@@ -70,14 +70,34 @@ def _safe_multiline_text(draw, xy, text, font, fill, anchor=None, spacing=4):
             raise e
 
 
-def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, spacing=4, scale=1.0):
+def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, spacing=4, scale=1.0, text_styles=None):
+    """绘制带阴影的文本，支持样式（粗体、斜体、下划线）"""
     x, y = pos
     if not text: return
+    
+    # 绘制下划线（如果启用）
+    if text_styles and text_styles.get('underline'):
+        try:
+            if hasattr(draw, 'textbbox'):
+                bbox = draw.textbbox((x, y), text, font=font, anchor=anchor)
+                underline_y = bbox[3] + 2
+                draw.line([(bbox[0], underline_y), (bbox[2], underline_y)], fill=fill, width=2)
+            else:
+                text_width, _ = draw.textsize(text, font=font)
+                underline_y = y + font.size + 2
+                draw.line([(x, underline_y), (x + text_width, underline_y)], fill=fill, width=2)
+        except:
+            pass
+    
+    # 绘制阴影
     if shadow_cfg.get('enabled'):
         s_color = hex_to_rgb(shadow_cfg.get('color', '#000000'))
         off_x, off_y = int(shadow_cfg.get('offset_x', 2) * scale), int(shadow_cfg.get('offset_y', 2) * scale)
         _safe_multiline_text(draw, (x + off_x, y + off_y), text, font, fill=s_color, anchor=anchor, spacing=spacing)
+    
+    # 绘制正文
     _safe_multiline_text(draw, (x, y), text, font, fill=fill, anchor=anchor, spacing=spacing)
+
 
 
 def get_text_style_str(obj, style_prefix):
@@ -206,14 +226,16 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, men
     total_text_height = name_h + (desc_h + gap if desc else 0)
     text_start_y = y + (h - total_text_height) / 2
     
-    # 获取功能项名称和描述的阴影配置
+    # 获取功能项名称和描述的阴影配置和样式
     name_shadow = get_shadow_config(item, menu_data, 'item_name')
     desc_shadow = get_shadow_config(item, menu_data, 'item_desc')
+    name_styles = get_text_style_str(item, 'item_name')
+    desc_styles = get_text_style_str(item, 'item_desc')
 
     if name: draw_text_with_shadow(draw, (text_start_x, text_start_y), name, name_font, fonts_map["name_color"],
-                                   name_shadow, scale=scale)
+                                   name_shadow, scale=scale, text_styles=name_styles)
     if desc: draw_text_with_shadow(draw, (text_start_x, text_start_y + name_h + gap), desc, desc_font,
-                                   fonts_map["desc_color"], desc_shadow, spacing=line_spacing, scale=scale)
+                                   fonts_map["desc_color"], desc_shadow, spacing=line_spacing, scale=scale, text_styles=desc_styles)
 
 
 def get_style(obj: dict, menu: dict, key: str, fallback_key: str, default=None):
@@ -392,15 +414,17 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     tx = {"left": PADDING_X, "right": final_w - PADDING_X, "center": final_w / 2}[al]
     anc = {"left": "lt", "right": "rt", "center": "mt"}[al]
     
-    # 获取主标题的阴影配置
+    # 获取主标题的阴影配置和样式
     title_shadow = get_shadow_config(menu_data, menu_data, 'title')
+    title_styles = get_text_style_str(menu_data, 'title')
     draw_text_with_shadow(draw_ov, (tx, TITLE_TOP_MARGIN), menu_data.get("title", ""), tf,
-                          hex_to_rgb(menu_data.get("title_color")), title_shadow, anchor=anc, scale=scale)
+                          hex_to_rgb(menu_data.get("title_color")), title_shadow, anchor=anc, scale=scale, text_styles=title_styles)
     
-    # 获取副标题的阴影配置
+    # 获取副标题的阴影配置和样式
     subtitle_shadow = get_shadow_config(menu_data, menu_data, 'subtitle')
+    subtitle_styles = get_text_style_str(menu_data, 'subtitle')
     draw_text_with_shadow(draw_ov, (tx, TITLE_TOP_MARGIN + title_size + s(10)), menu_data.get("sub_title", ""), sf,
-                          hex_to_rgb(menu_data.get("subtitle_color")), subtitle_shadow, anchor=anc, scale=scale)
+                          hex_to_rgb(menu_data.get("subtitle_color")), subtitle_shadow, anchor=anc, scale=scale, text_styles=subtitle_styles)
 
     for g_info in group_layout_info:
         grp = g_info["data"]
@@ -435,12 +459,13 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
         ty = g_info["title_y"] + s(10)
         title_x = bx + s(10)
         
-        # 获取分组标题的阴影配置
+        # 获取分组标题的阴影配置和样式
         group_title_shadow = get_shadow_config(grp, menu_data, 'group_title')
+        group_title_styles = get_text_style_str(grp, 'group_title')
 
         draw_text_with_shadow(draw_ov, (title_x, ty), title_text, gtf,
                               hex_to_rgb(get_style(grp, menu_data, 'title_color', 'group_title_color', '#FFFFFF')),
-                              group_title_shadow, scale=scale)
+                              group_title_shadow, scale=scale, text_styles=group_title_styles)
 
         if is_text_group:
             # 纯文本分组处理
@@ -505,7 +530,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                                      fill=(bg_rgb[0], bg_rgb[1], bg_rgb[2], text_bg_alpha))
             
             draw_text_with_shadow(draw_ov, (text_x, text_y), text_content or "", text_font,
-                                 text_color, text_shadow, scale=scale)
+                                 text_color, text_shadow, scale=scale, text_styles=get_text_style_str(grp, 'text'))
         else:
             # 功能项分组处理
             if sub_text:
@@ -538,11 +563,12 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
             elif align == 'center':
                 sub_y = ty + (title_h - sub_h) / 2
             
-            # 获取分组副标题的阴影配置
+            # 获取分组副标题的阴影配置和样式
             group_sub_shadow = get_shadow_config(grp, menu_data, 'group_sub')
+            group_sub_styles = get_text_style_str(grp, 'group_sub')
             draw_text_with_shadow(draw_ov, (sub_x, sub_y), sub_text, gsf,
                                   hex_to_rgb(get_style(grp, menu_data, 'sub_color', 'group_sub_color', '#AAAAAA')),
-                                  group_sub_shadow, scale=scale)
+                                  group_sub_shadow, scale=scale, text_styles=group_sub_styles)
 
             item_grid_w = (bw - s(40) - (g_info["columns"] - 1) * ITEM_GAP_X) // g_info["columns"]
             for i, item in enumerate(grp.get("items", [])):

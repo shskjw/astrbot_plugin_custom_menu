@@ -678,16 +678,36 @@ function renderCanvas(m) {
         shadowCss = `${m.shadow_offset_x}px ${m.shadow_offset_y}px ${m.shadow_radius}px ${m.shadow_color}`;
     }
 
+    // 主标题阴影
+    let titleShadowCss = 'none';
+    if (m.title_shadow_enabled) {
+        const tShadowColor = m.title_shadow_color || '#000000';
+        const tShadowX = m.title_shadow_offset_x !== undefined ? m.title_shadow_offset_x : 2;
+        const tShadowY = m.title_shadow_offset_y !== undefined ? m.title_shadow_offset_y : 2;
+        const tShadowR = m.title_shadow_radius !== undefined ? m.title_shadow_radius : 0;
+        titleShadowCss = `${tShadowX}px ${tShadowY}px ${tShadowR}px ${tShadowColor}`;
+    }
+
+    // 副标题阴影
+    let subShadowCss = 'none';
+    if (m.subtitle_shadow_enabled) {
+        const sShadowColor = m.subtitle_shadow_color || '#000000';
+        const sShadowX = m.subtitle_shadow_offset_x !== undefined ? m.subtitle_shadow_offset_x : 2;
+        const sShadowY = m.subtitle_shadow_offset_y !== undefined ? m.subtitle_shadow_offset_y : 2;
+        const sShadowR = m.subtitle_shadow_radius !== undefined ? m.subtitle_shadow_radius : 0;
+        subShadowCss = `${sShadowX}px ${sShadowY}px ${sShadowR}px ${sShadowColor}`;
+    }
+
     const gfTitle = cssFont(m.title_font);
     const titleAlign = m.title_align || 'center';
     const titleSz = m.title_size || 60;
-    const subSz = titleSz * 0.5;
+    const subSz = m.subtitle_size !== undefined ? m.subtitle_size : (titleSz * 0.5);
 
     let html = `
-        <div class="header-area title-clickable" style="text-align:${titleAlign}; text-shadow:${shadowCss};"
+        <div class="header-area title-clickable" style="text-align:${titleAlign};"
              onclick="openContextEditor('title')">
-            <div style="color:${m.title_color}; font-family:'${gfTitle}'; font-size:${titleSz}px">${m.title}</div>
-            <div style="color:${m.subtitle_color}; font-family:'${gfTitle}'; font-size:${subSz}px">${m.sub_title}</div>
+            <div style="color:${m.title_color}; font-family:'${gfTitle}'; font-size:${titleSz}px; text-shadow:${titleShadowCss}; ${getTextStyleCSS(m, 'title')}">${m.title}</div>
+            <div style="color:${m.subtitle_color}; font-family:'${gfTitle}'; font-size:${subSz}px; text-shadow:${subShadowCss}; ${getTextStyleCSS(m, 'subtitle')}">${m.sub_title}</div>
         </div>
     `;
 
@@ -726,13 +746,33 @@ function renderCanvas(m) {
         let alignItems = 'flex-end';
         if (subAlign === 'center') alignItems = 'center';
         if (subAlign === 'top') alignItems = 'flex-start';
+        
+        // 计算分组标题的阴影
+        let gTitleShadowCss = shadowCss;
+        if (g.group_title_shadow_enabled) {
+            const gTitleShadowColor = g.group_title_shadow_color || '#000000';
+            const gTitleShadowX = g.group_title_shadow_offset_x !== undefined ? g.group_title_shadow_offset_x : 2;
+            const gTitleShadowY = g.group_title_shadow_offset_y !== undefined ? g.group_title_shadow_offset_y : 2;
+            const gTitleShadowR = g.group_title_shadow_radius !== undefined ? g.group_title_shadow_radius : 0;
+            gTitleShadowCss = `${gTitleShadowX}px ${gTitleShadowY}px ${gTitleShadowR}px ${gTitleShadowColor}`;
+        }
+        
+        // 计算副标题阴影
+        let gSubShadowCss = shadowCss;
+        if (g.group_sub_shadow_enabled) {
+            const gSubShadowColor = g.group_sub_shadow_color || '#000000';
+            const gSubShadowX = g.group_sub_shadow_offset_x !== undefined ? g.group_sub_shadow_offset_x : 2;
+            const gSubShadowY = g.group_sub_shadow_offset_y !== undefined ? g.group_sub_shadow_offset_y : 2;
+            const gSubShadowR = g.group_sub_shadow_radius !== undefined ? g.group_sub_shadow_radius : 0;
+            gSubShadowCss = `${gSubShadowX}px ${gSubShadowY}px ${gSubShadowR}px ${gSubShadowColor}`;
+        }
 
         html += `
         <div class="group-wrapper">
             <div class="group-header-wrap" onclick="openContextEditor('group', ${gIdx}, -1)"
-                 style="padding:0 0 10px 10px; cursor:pointer; text-shadow:${shadowCss}; display:flex; gap:15px; align-items:${alignItems};">
+                 style="padding:0 0 10px 10px; cursor:pointer; text-shadow:${gTitleShadowCss}; display:flex; gap:15px; align-items:${alignItems};">
                 <span style="color:${getStyle(g, 'title_color', 'group_title_color')}; font-family:'${gTitleFont}'; font-size:${gTitleSz}px; line-height:1; ${getTextStyleCSS(g, 'group_title')}">${g.title}</span>
-                ${g.subtitle ? `<span style="color:${gSubColor}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1; ${getTextStyleCSS(g, 'group_sub')}">${g.subtitle}</span>` : ''}
+                ${g.subtitle ? `<span style="color:${gSubColor}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1; text-shadow:${gSubShadowCss}; ${getTextStyleCSS(g, 'group_sub')}">${g.subtitle}</span>` : ''}
             </div>`;
         
         // 纯文本分组
@@ -748,8 +788,18 @@ function renderCanvas(m) {
             const bgRgba = hexToRgba(bgColor, bgAlpha);
             const bgBlurCSS = bgBlur > 0 ? `backdrop-filter: blur(${bgBlur}px);` : '';
             
+            // 纯文本阴影
+            let iTextShadowCss = 'none';
+            if (g.text_shadow_enabled) {
+                const tShadowColor = g.text_shadow_color || '#000000';
+                const tShadowX = g.text_shadow_offset_x !== undefined ? g.text_shadow_offset_x : 2;
+                const tShadowY = g.text_shadow_offset_y !== undefined ? g.text_shadow_offset_y : 2;
+                const tShadowR = g.text_shadow_radius !== undefined ? g.text_shadow_radius : 0;
+                iTextShadowCss = `${tShadowX}px ${tShadowY}px ${tShadowR}px ${tShadowColor}`;
+            }
+            
             html += `<div class="group-content-box" style="background-color:${bgRgba}; ${bgBlurCSS}; width:${groupWidth}; min-height:${groupHeight !== 'auto' ? groupHeight : 'auto'}; padding:20px; position:relative; border-radius:15px; word-wrap:break-word; white-space:pre-wrap; overflow-wrap:break-word;">
-                <div style="color:${textColor}; font-family:'${textFont}'; font-size:${textSize}px; line-height:1.6; text-shadow:${shadowCss}; ${textStyleCSS}">${textContent}</div>
+                <div style="color:${textColor}; font-family:'${textFont}'; font-size:${textSize}px; line-height:1.6; text-shadow:${iTextShadowCss}; ${textStyleCSS}">${textContent}</div>
             </div>`;
         } else {
             // 功能项分组
@@ -768,6 +818,26 @@ function renderCanvas(m) {
                 const iNameFont = cssFont(getStyle(item, 'name_font', 'item_name_font'));
                 const iDescFont = cssFont(getStyle(item, 'desc_font', 'item_desc_font'));
                 
+                // 计算功能项名称阴影
+                let iNameShadowCss = shadowCss;
+                if (item.item_name_shadow_enabled) {
+                    const iNameShadowColor = item.item_name_shadow_color || '#000000';
+                    const iNameShadowX = item.item_name_shadow_offset_x !== undefined ? item.item_name_shadow_offset_x : 2;
+                    const iNameShadowY = item.item_name_shadow_offset_y !== undefined ? item.item_name_shadow_offset_y : 2;
+                    const iNameShadowR = item.item_name_shadow_radius !== undefined ? item.item_name_shadow_radius : 0;
+                    iNameShadowCss = `${iNameShadowX}px ${iNameShadowY}px ${iNameShadowR}px ${iNameShadowColor}`;
+                }
+                
+                // 计算功能项描述阴影
+                let iDescShadowCss = shadowCss;
+                if (item.item_desc_shadow_enabled) {
+                    const iDescShadowColor = item.item_desc_shadow_color || '#000000';
+                    const iDescShadowX = item.item_desc_shadow_offset_x !== undefined ? item.item_desc_shadow_offset_x : 2;
+                    const iDescShadowY = item.item_desc_shadow_offset_y !== undefined ? item.item_desc_shadow_offset_y : 2;
+                    const iDescShadowR = item.item_desc_shadow_radius !== undefined ? item.item_desc_shadow_radius : 0;
+                    iDescShadowCss = `${iDescShadowX}px ${iDescShadowY}px ${iDescShadowR}px ${iDescShadowColor}`;
+                }
+                
                 // 处理功能项自定义大小
                 let itemStyles = "";
                 if (item.custom_width !== undefined || item.custom_height !== undefined) {
@@ -780,8 +850,8 @@ function renderCanvas(m) {
 
                 const txt = `
                     <div class="item-text-content" style="text-shadow:${shadowCss};">
-                        <div style="color:${getStyle(item, 'name_color', 'item_name_color')};font-family:'${iNameFont}';font-size:${iNameSz}px;${getTextStyleCSS(item, 'item_name')}">${item.name}</div>
-                        <div style="color:${getStyle(item, 'desc_color', 'item_desc_color')};font-family:'${iDescFont}';font-size:${iDescSz}px;margin-top:5px;white-space:pre-wrap;${getTextStyleCSS(item, 'item_desc')}">${item.desc || ''}</div>
+                        <div style="color:${getStyle(item, 'name_color', 'item_name_color')};font-family:'${iNameFont}';font-size:${iNameSz}px;text-shadow:${iNameShadowCss};${getTextStyleCSS(item, 'item_name')}">${item.name}</div>
+                        <div style="color:${getStyle(item, 'desc_color', 'item_desc_color')};font-family:'${iDescFont}';font-size:${iDescSz}px;margin-top:5px;white-space:pre-wrap;text-shadow:${iDescShadowCss};${getTextStyleCSS(item, 'item_desc')}">${item.desc || ''}</div>
                     </div>`;
 
                 if (freeMode) {
@@ -997,7 +1067,7 @@ function updateProp(type, gIdx, iIdx, key, val) {
     if (val === "") {
         delete obj[key];
     } else {
-        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'text_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height', 'blur_radius', 'custom_width', 'custom_height', 'group_title_shadow_offset_x', 'group_title_shadow_offset_y', 'group_title_shadow_radius', 'item_name_shadow_offset_x', 'item_name_shadow_offset_y', 'item_name_shadow_radius', 'item_desc_shadow_offset_x', 'item_desc_shadow_offset_y', 'item_desc_shadow_radius', 'text_bg_alpha', 'text_bg_blur'].includes(key)) {
+        if (['title_size', 'sub_size', 'name_size', 'desc_size', 'text_size', 'bg_alpha', 'layout_columns', 'width', 'height', 'x', 'y', 'w', 'h', 'group_blur_radius', 'item_blur_radius', 'canvas_width', 'canvas_height', 'icon_size', 'bg_custom_width', 'bg_custom_height', 'blur_radius', 'custom_width', 'custom_height', 'title_shadow_offset_x', 'title_shadow_offset_y', 'title_shadow_radius', 'subtitle_shadow_offset_x', 'subtitle_shadow_offset_y', 'subtitle_shadow_radius', 'group_title_shadow_offset_x', 'group_title_shadow_offset_y', 'group_title_shadow_radius', 'group_sub_shadow_offset_x', 'group_sub_shadow_offset_y', 'group_sub_shadow_radius', 'item_name_shadow_offset_x', 'item_name_shadow_offset_y', 'item_name_shadow_radius', 'item_desc_shadow_offset_x', 'item_desc_shadow_offset_y', 'item_desc_shadow_radius', 'text_shadow_offset_x', 'text_shadow_offset_y', 'text_shadow_radius', 'text_bg_alpha', 'text_bg_blur'].includes(key)) {
             val = parseInt(val);
         }
         if (key.endsWith('_enabled') || key.endsWith('_bold') || key.endsWith('_italic') || key.endsWith('_underline')) {
@@ -1350,8 +1420,12 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += input("主标题大小 (px)", "title_size", obj.title_size, "number");
         html += fonts("主标题字体", "title_font", "title_font");
         html += textStyles("主标题", "title");
+        html += shadowSettings("主标题", "title");
         html += color("副标题颜色", "subtitle_color", "subtitle_color");
+        html += input("副标题大小 (px)", "subtitle_size", obj.subtitle_size, "number", "placeholder='默认'");
+        html += fonts("副标题字体", "subtitle_font", "subtitle_font");
         html += textStyles("副标题", "subtitle");
+        html += shadowSettings("副标题", "subtitle");
     } else if (type === 'group') {
         html += input("分组标题", "title", obj.title);
         html += input("副标题", "subtitle", obj.subtitle);
@@ -1390,39 +1464,49 @@ function generatePropForm(type, obj, gIdx, iIdx) {
             html += input("文本大小 (px)", "text_size", obj.text_size, "number", "placeholder='默认30'");
             html += fonts("文本字体", "text_font", "group_sub_font");
             html += textStyles("文本", "text");
+            html += shadowSettings("文本", "text");
             
             html += `<hr style="border-color:#444; margin: 20px 0;">`;
             html += `<div class="section-title">背景毛玻璃效果</div>`;
             html += color("背景颜色", "text_bg_color", "group_sub_bg_color");
             html += input("背景透明度", "text_bg_alpha", obj.text_bg_alpha, "range", "min='0' max='255' placeholder='0-255'");
             html += input("模糊半径", "text_bg_blur", obj.text_bg_blur, "number", "min='0' placeholder='0-15'");
+            
+            html += `<div class="form-row" style="background:#333;padding:10px;border-radius:4px;margin-top:10px;display:flex;align-items:center;justify-content:space-between">
+                <label style="margin:0">✨ 自由排版模式</label>
+                <input type="checkbox" ${obj.free_mode?'checked':''} onclick="toggleGroupFreeMode(${gIdx}, this.checked)" style="width:20px;height:20px;" disabled>
+            </div>`;
+            html += `<button class="btn btn-danger btn-block" style="margin-top:10px" onclick="deleteGroup(${gIdx})">删除此分组</button>`;
+        } else {
+            // 功能项分组的设置
+            html += `<div class="form-row" style="background:#333;padding:10px;border-radius:4px;margin-top:10px;display:flex;align-items:center;justify-content:space-between">
+                <label style="margin:0">✨ 自由排版模式</label>
+                <input type="checkbox" ${obj.free_mode?'checked':''} onclick="toggleGroupFreeMode(${gIdx}, this.checked)" style="width:20px;height:20px;">
+            </div>`;
+            html += `<button class="btn btn-danger btn-block" style="margin-top:10px" onclick="deleteGroup(${gIdx})">删除此分组</button>`;
+            
+            // 毛玻璃设置 (仅功能项分组)
+            html += `<hr style="border-color:#444; margin: 20px 0;">`;
+            html += `<div class="section-title">毛玻璃效果</div>`;
+            html += color("背景颜色", "bg_color", "group_bg_color");
+            html += `<div class="form-row"><label>背景透明度 (0-255)</label><input type="range" max="255" value="${obj.bg_alpha!==undefined?obj.bg_alpha:''}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, 'bg_alpha', this.value)"></div>`;
+            html += input("毛玻璃模糊半径 (px)", "blur_radius", obj.blur_radius, "number", "placeholder='默认继承全局'");
+            html += input("自定义宽度 (px)", "custom_width", obj.custom_width, "number", "placeholder='默认自适应'");
+            html += input("自定义高度 (px)", "custom_height", obj.custom_height, "number", "placeholder='默认自适应'");
         }
         
-        html += `<div class="form-row" style="background:#333;padding:10px;border-radius:4px;margin-top:10px;display:flex;align-items:center;justify-content:space-between">
-            <label style="margin:0">✨ 自由排版模式</label>
-            <input type="checkbox" ${obj.free_mode?'checked':''} onclick="toggleGroupFreeMode(${gIdx}, this.checked)" style="width:20px;height:20px;" ${isTextGroup?'disabled':''}>
-        </div>`;
-        html += `<button class="btn btn-danger btn-block" style="margin-top:10px" onclick="deleteGroup(${gIdx})">删除此分组</button>`;
         html += `<hr style="border-color:#444; margin: 20px 0;">`;
         html += `<div class="section-title">样式覆盖 (独立设置)</div>`;
         html += color("标题颜色", "title_color", "group_title_color");
         html += input("标题大小 (px)", "title_size", obj.title_size, "number", "placeholder='默认'");
         html += fonts("标题字体", "title_font", "group_title_font");
         html += textStyles("标题", "group_title");
+        html += shadowSettings("标题", "group_title");
         html += color("副标题颜色", "sub_color", "group_sub_color");
         html += input("副标题大小 (px)", "sub_size", obj.sub_size, "number", "placeholder='默认'");
+        html += fonts("副标题字体", "sub_font", "group_sub_font");
         html += textStyles("副标题", "group_sub");
-        html += shadowSettings("标题", "group_title");
-        
-        // 毛玻璃设置
-        html += `<hr style="border-color:#444; margin: 20px 0;">`;
-        html += `<div class="section-title">毛玻璃效果</div>`;
-        html += color("背景颜色", "bg_color", "group_bg_color");
-        html += `<div class="form-row"><label>背景透明度 (0-255)</label><input type="range" max="255" value="${obj.bg_alpha!==undefined?obj.bg_alpha:''}" oninput="updateProp('${type}', ${gIdx}, ${iIdx}, 'bg_alpha', this.value)"></div>`;
-        html += input("毛玻璃模糊半径 (px)", "blur_radius", obj.blur_radius, "number", "placeholder='默认继承全局'");
-        html += input("自定义宽度 (px)", "custom_width", obj.custom_width, "number", "placeholder='默认自适应'");
-        html += input("自定义高度 (px)", "custom_height", obj.custom_height, "number", "placeholder='默认自适应'");
-    } else {
+        html += shadowSettings("副标题", "group_sub");
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
 

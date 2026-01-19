@@ -1495,6 +1495,7 @@ function generatePropForm(type, obj, gIdx, iIdx) {
             html += input("自定义高度 (px)", "custom_height", obj.custom_height, "number", "placeholder='默认自适应'");
         }
         
+        // 分组样式设置（对所有分组类型）
         html += `<hr style="border-color:#444; margin: 20px 0;">`;
         html += `<div class="section-title">样式覆盖 (独立设置)</div>`;
         html += color("标题颜色", "title_color", "group_title_color");
@@ -1507,6 +1508,7 @@ function generatePropForm(type, obj, gIdx, iIdx) {
         html += fonts("副标题字体", "sub_font", "group_sub_font");
         html += textStyles("副标题", "group_sub");
         html += shadowSettings("副标题", "group_sub");
+    } else if (type === 'item') {
         html += input("功能名称", "name", obj.name);
         html += textarea("功能描述", "desc", obj.desc);
 

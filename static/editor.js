@@ -738,8 +738,18 @@ function renderCanvas(m) {
         // 纯文本分组
         if (isTextGroup) {
             const textContent = g.text_content || g.subtitle || '';
-            html += `<div class="group-content-box" style="background-color:${gRgba}; ${gBlur}; width:${groupWidth}; min-height:${groupHeight !== 'auto' ? groupHeight : 'auto'}; padding:20px; position:relative; border-radius:15px; word-wrap:break-word; white-space:pre-wrap; overflow-wrap:break-word;">
-                <div style="color:${getStyle(g, 'sub_color', 'group_sub_color')}; font-family:'${gSubFont}'; font-size:${gSubSz}px; line-height:1.6; text-shadow:${shadowCss};">${textContent}</div>
+            const textSize = g.text_size || m.group_sub_size || 30;
+            const textFont = cssFont(g.text_font || m.group_sub_font);
+            const textColor = getStyle(g, 'text_color', 'group_sub_color');
+            const textStyleCSS = getTextStyleCSS(g, 'text');
+            const bgColor = g.text_bg_color || m.group_sub_bg_color || '#333333';
+            const bgAlpha = (g.text_bg_alpha !== undefined ? g.text_bg_alpha : (m.group_sub_bg_alpha || 200)) / 255;
+            const bgBlur = g.text_bg_blur !== undefined ? g.text_bg_blur : (m.group_sub_bg_blur || 5);
+            const bgRgba = hexToRgba(bgColor, bgAlpha);
+            const bgBlurCSS = bgBlur > 0 ? `backdrop-filter: blur(${bgBlur}px);` : '';
+            
+            html += `<div class="group-content-box" style="background-color:${bgRgba}; ${bgBlurCSS}; width:${groupWidth}; min-height:${groupHeight !== 'auto' ? groupHeight : 'auto'}; padding:20px; position:relative; border-radius:15px; word-wrap:break-word; white-space:pre-wrap; overflow-wrap:break-word;">
+                <div style="color:${textColor}; font-family:'${textFont}'; font-size:${textSize}px; line-height:1.6; text-shadow:${shadowCss}; ${textStyleCSS}">${textContent}</div>
             </div>`;
         } else {
             // 功能项分组

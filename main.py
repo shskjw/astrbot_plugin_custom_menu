@@ -41,7 +41,7 @@ def _get_local_ip_sync():
 async def get_local_ip(): return await asyncio.to_thread(_get_local_ip_sync)
 
 
-@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.8.8")
+@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.8.9")
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)

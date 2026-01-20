@@ -554,22 +554,22 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                 except:
                     sub_h = 18
 
-            align = get_style(grp, menu_data, 'sub_align', 'group_sub_align', 'bottom')
+                align = get_style(grp, menu_data, 'sub_align', 'group_sub_align', 'bottom')
 
-            sub_x = title_x + title_w + s(15)
-            sub_y = ty
+                sub_x = title_x + title_w + s(15)
+                sub_y = ty
 
-            if align == 'bottom':
-                sub_y = ty + title_h - sub_h - s(2)
-            elif align == 'center':
-                sub_y = ty + (title_h - sub_h) / 2
-            
-            # 获取分组副标题的阴影配置和样式
-            group_sub_shadow = get_shadow_config(grp, menu_data, 'group_sub')
-            group_sub_styles = get_text_style_str(grp, 'group_sub')
-            draw_text_with_shadow(draw_ov, (sub_x, sub_y), sub_text, gsf,
-                                  hex_to_rgb(get_style(grp, menu_data, 'sub_color', 'group_sub_color', '#AAAAAA')),
-                                  group_sub_shadow, scale=scale, text_styles=group_sub_styles)
+                if align == 'bottom':
+                    sub_y = ty + title_h - sub_h - s(2)
+                elif align == 'center':
+                    sub_y = ty + (title_h - sub_h) / 2
+                
+                # 获取分组副标题的阴影配置和样式
+                group_sub_shadow = get_shadow_config(grp, menu_data, 'group_sub')
+                group_sub_styles = get_text_style_str(grp, 'group_sub')
+                draw_text_with_shadow(draw_ov, (sub_x, sub_y), sub_text, gsf,
+                                      hex_to_rgb(get_style(grp, menu_data, 'sub_color', 'group_sub_color', '#AAAAAA')),
+                                      group_sub_shadow, scale=scale, text_styles=group_sub_styles)
 
             item_grid_w = (bw - s(40) - (g_info["columns"] - 1) * ITEM_GAP_X) // g_info["columns"]
             for i, item in enumerate(grp.get("items", [])):

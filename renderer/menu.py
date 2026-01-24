@@ -42,9 +42,9 @@ def hex_to_rgb(hex_color):
     return 30, 30, 30
 
 
-def _safe_multiline_text(draw, xy, text, font, fill, anchor=None, spacing=4):
+def _safe_multiline_text(draw, xy, text, font, fill, anchor=None, spacing=4, **kwargs):
     try:
-        draw.multiline_text(xy, text, font=font, fill=fill, anchor=anchor, spacing=spacing)
+        draw.multiline_text(xy, text, font=font, fill=fill, anchor=anchor, spacing=spacing, **kwargs)
     except ValueError as e:
         if "anchor" in str(e):
             x, y = xy
@@ -66,15 +66,21 @@ def _safe_multiline_text(draw, xy, text, font, fill, anchor=None, spacing=4):
                     y -= h / 2
                 elif ay == 'b':
                     y -= h
-            draw.multiline_text((x, y), text, font=font, fill=fill, spacing=spacing)
+            draw.multiline_text((x, y), text, font=font, fill=fill, spacing=spacing, **kwargs)
         else:
             raise e
 
 
-def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, spacing=4, scale=1.0, text_styles=None):
+def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, spacing=4, scale=1.0, text_styles=None, align='left'):
     """绘制带阴影的文本，支持样式（粗体、斜体、下划线）"""
     x, y = pos
     if not text: return
+    
+    # 处理样式
+    stroke_width = 0
+    if text_styles and text_styles.get('bold'):
+        # 根据字体大小计算描边宽度，模拟粗体
+        stroke_width = max(1, int(font.size / 30))
     
     # 绘制下划线（如果启用）
     if text_styles and text_styles.get('underline'):
@@ -94,10 +100,10 @@ def draw_text_with_shadow(draw, pos, text, font, fill, shadow_cfg, anchor=None, 
     if shadow_cfg.get('enabled'):
         s_color = hex_to_rgb(shadow_cfg.get('color', '#000000'))
         off_x, off_y = int(shadow_cfg.get('offset_x', 2) * scale), int(shadow_cfg.get('offset_y', 2) * scale)
-        _safe_multiline_text(draw, (x + off_x, y + off_y), text, font, fill=s_color, anchor=anchor, spacing=spacing)
+        _safe_multiline_text(draw, (x + off_x, y + off_y), text, font, fill=s_color, anchor=anchor, spacing=spacing, align=align, stroke_width=stroke_width, stroke_fill=s_color)
     
     # 绘制正文
-    _safe_multiline_text(draw, (x, y), text, font, fill=fill, anchor=anchor, spacing=spacing)
+    _safe_multiline_text(draw, (x, y), text, font, fill=fill, anchor=anchor, spacing=spacing, align=align, stroke_width=stroke_width, stroke_fill=fill)
 
 
 
@@ -203,11 +209,12 @@ def render_item_content(overlay_img, draw, item, box, fonts_map, shadow_cfg, men
         desc = wrap_text_to_width(desc, desc_font, text_max_width, draw)
 
     try:
-        if name and hasattr(name_font, "getbbox"):
-            bbox = name_font.getbbox(name)
-            name_h = bbox[3] - bbox[1]
+        if hasattr(name_font, "getbbox"):
+            # 使用参考字符计算高度，避免因英文/数字高度不一致导致重叠
+            ref_bbox = name_font.getbbox("Hg")
+            name_h = ref_bbox[3] - ref_bbox[1]
         elif name:
-            name_h = name_font.getsize(name)[1]
+            name_h = name_font.getsize("Hg")[1]
         else:
             name_h = 0
     except:
@@ -362,7 +369,12 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
         is_text_group = group.get("group_type") == "text"
         items, g_cols = group.get("items", []), group.get("layout_columns") or columns
         g_title_size = s(int(get_style(group, menu_data, 'title_size', 'group_title_size', 30)))
-        box_start_y = current_y + g_title_size + s(20)
+        
+        # 优化：如果分组没有标题，减少留白
+        if not group.get("title"):
+            box_start_y = current_y + s(10)
+        else:
+            box_start_y = current_y + g_title_size + s(20)
         
         if is_text_group:
             # 纯文本分组 - 自适应高度
@@ -504,6 +516,9 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
             text_bg_alpha = int(grp.get("text_bg_alpha", menu_data.get("group_sub_bg_alpha", 200)))
             text_bg_blur = int(grp.get("text_bg_blur", menu_data.get("group_sub_bg_blur", 5)))
             
+            # 获取纯文本的对齐方式
+            text_align = grp.get("text_align", "left")
+
             # 如果启用背景毛玻璃效果，先绘制背景
             if text_bg_alpha > 0 and text_bg_blur >= 0:
                 # 计算背景区域（文本周围留一些边距）
@@ -517,21 +532,21 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                 bg_rgb = hex_to_rgb(text_bg_color)
                 if text_bg_blur > 0:
                     # 模糊背景 (使用简单的半透明填充模拟毛玻璃)
-                    blur_image = Image.new('RGBA', (img.width, img.height), (0, 0, 0, 0))
+                    blur_image = Image.new('RGBA', (overlay.width, overlay.height), (0, 0, 0, 0))
                     blur_draw = ImageDraw.Draw(blur_image)
                     blur_draw.rectangle([(bg_x1, bg_y1), (bg_x2, bg_y2)], 
                                        fill=(bg_rgb[0], bg_rgb[1], bg_rgb[2], text_bg_alpha))
                     
                     # 对模糊图像应用高斯模糊
                     blur_image = blur_image.filter(ImageFilter.GaussianBlur(radius=text_bg_blur))
-                    img.paste(blur_image, (0, 0), blur_image)
+                    overlay.paste(blur_image, (0, 0), blur_image)
                 else:
                     # 不模糊，直接填充
                     draw_ov.rectangle([(bg_x1, bg_y1), (bg_x2, bg_y2)], 
                                      fill=(bg_rgb[0], bg_rgb[1], bg_rgb[2], text_bg_alpha))
             
             draw_text_with_shadow(draw_ov, (text_x, text_y), text_content or "", text_font,
-                                 text_color, text_shadow, scale=scale, text_styles=get_text_style_str(grp, 'text'))
+                                 text_color, text_shadow, scale=scale, text_styles=get_text_style_str(grp, 'text'), align=text_align)
         else:
             # 功能项分组处理
             if sub_text:

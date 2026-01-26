@@ -184,10 +184,10 @@ class CustomMenuPlugin(Star):
             try:
                 await asyncio.wait_for(self._init_task, timeout=5.0)
             except:
-                await event_obj.send(event_obj.plain_result("⚠️ 插件初始化超时").chain)
+                await event_obj.send(event_obj.plain_result("⚠️ 插件初始化超时"))
                 return
         if not self.has_deps: 
-            await event_obj.send(event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}").chain)
+            await event_obj.send(event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}"))
             return
 
         try:

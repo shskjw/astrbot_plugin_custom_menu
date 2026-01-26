@@ -1975,55 +1975,59 @@ function openWidgetImgPicker(currentImg) {
 // =============================================================
 //  带预览的选择器渲染（用于侧边栏）
 // =============================================================
-
 function renderImageSelect(containerId, type, currentValue, onChangeCallback) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    
+
     let basePath = '';
     if (type === 'background') basePath = '/raw_assets/backgrounds/';
     else if (type === 'icon') basePath = '/raw_assets/icons/';
     else if (type === 'widget') basePath = '/raw_assets/widgets/';
-    
+
     container.innerHTML = '';
-    
+
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;';
-    
+    // 添加 max-width: 100% 防止父级溢出
+    wrapper.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px;background:#2a2a2a;border-radius:4px;border:1px solid #444;max-width:220px;width:auto;min-width:0;box-sizing:border-box;';
+
     // 预览图
     if (currentValue) {
         const img = document.createElement('img');
         img.src = basePath + currentValue;
-        img.style.cssText = 'width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #555;';
+        // 保持预览图不被压缩
+        img.style.cssText = 'width:32px;height:32px;min-width:32px;object-fit:cover;border-radius:4px;border:1px solid #555;';
         wrapper.appendChild(img);
     } else {
         const placeholder = document.createElement('div');
-        placeholder.style.cssText = 'width:32px;height:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;';
+        placeholder.style.cssText = 'width:32px;height:32px;min-width:32px;background:#333;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#666;font-size:12px;border:1px solid #555;';
         placeholder.innerText = '无';
         wrapper.appendChild(placeholder);
     }
-    
+
     // 文本
     const text = document.createElement('span');
-    text.style.cssText = 'flex:1;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    text.style.cssText = 'flex:1 1 auto;min-width:0;max-width:100%;font-size:12px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     text.innerText = currentValue || '点击选择...';
+    // 添加 title 属性，鼠标悬停时可以看到完整文件名
+    text.title = currentValue || '';
     wrapper.appendChild(text);
-    
+
     // 箭头
     const arrow = document.createElement('span');
-    arrow.style.cssText = 'color:#888;font-size:14px;';
+    arrow.style.cssText = 'color:#888;font-size:14px;flex-shrink:0;';
     arrow.innerText = '▼';
     wrapper.appendChild(arrow);
-    
+
     // 点击打开选择器
     wrapper.onclick = function() {
         openImagePicker(type, currentValue || '', function(selectedValue) {
             onChangeCallback(selectedValue);
         });
     };
-    
+
     container.appendChild(wrapper);
 }
+
 
 // =============================================================
 //  随机背景功能

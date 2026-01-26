@@ -148,18 +148,18 @@ class CustomMenuPlugin(Star):
             size_mb = size_bytes / (1024 * 1024)
             path_obj = Path(path_str)
 
-            # 阈值降低到 10MB (避免部分平台超时)
-            if size_mb > 10:
-                logger.info(f"文件体积 ({size_mb:.2f}MB) 超过10MB，转为文件发送")
+            # 阈值 15MB
+            if size_mb > 15:
+                logger.info(f"文件体积 ({size_mb:.2f}MB) 超过15MB，转为文件发送")
                 await event_obj.send(event_obj.chain_result([
                     File(file=str(path_obj), name=path_obj.name),
                     Plain(f" ⚠️ 菜单文件较大({size_mb:.1f}MB)，已转为文件形式发送。")
-                ]).chain)
+                ]))
                 return
 
             try:
                 # 尝试发送图片
-                await event_obj.send(event_obj.image_result(str(path_obj)).chain)
+                await event_obj.send(event_obj.image_result(str(path_obj)))
             except Exception as e:
                 # 捕获超时或其他发送错误，尝试回退到文件模式
                 err_str = str(e)
@@ -167,11 +167,11 @@ class CustomMenuPlugin(Star):
                 await event_obj.send(event_obj.chain_result([
                     File(file=str(path_obj), name=path_obj.name),
                     Plain(f" ⚠️ 图片发送超时/失败，已转为文件形式。")
-                ]).chain)
+                ]))
         except Exception as e:
             logger.error(f"发送菜单时出错: {e}")
             try:
-                 await event_obj.send(event_obj.image_result(path_str).chain)
+                 await event_obj.send(event_obj.image_result(path_str))
             except:
                  pass
 

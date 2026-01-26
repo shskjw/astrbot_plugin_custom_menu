@@ -144,33 +144,37 @@ class CustomMenuPlugin(Star):
 
     async def _send_smart_result(self, event_obj, path_str: str):
         try:
-            size_bytes = os.path.getsize(path_str)
+            path_obj = Path(path_str).resolve()
+            size_bytes = os.path.getsize(path_obj)
             size_mb = size_bytes / (1024 * 1024)
-            path_obj = Path(path_str)
+            
+            # 使用 as_uri() 转换为 file:/// 格式，兼容 NapCat 等适配器的本地文件识别
+            file_uri = path_obj.as_uri()
 
             # 阈值 15MB
             if size_mb > 15:
                 logger.info(f"文件体积 ({size_mb:.2f}MB) 超过15MB，转为文件发送")
                 await event_obj.send(event_obj.chain_result([
-                    File(file=str(path_obj), name=path_obj.name),
+                    File(file=file_uri, name=path_obj.name),
                     Plain(f" ⚠️ 菜单文件较大({size_mb:.1f}MB)，已转为文件形式发送。")
                 ]))
                 return
 
             try:
                 # 尝试发送图片
-                await event_obj.send(event_obj.image_result(str(path_obj)))
+                await event_obj.send(event_obj.image_result(file_uri))
             except Exception as e:
                 # 捕获超时或其他发送错误，尝试回退到文件模式
                 err_str = str(e)
                 logger.warning(f"图片发送失败: {err_str}，尝试转为文件发送")
                 await event_obj.send(event_obj.chain_result([
-                    File(file=str(path_obj), name=path_obj.name),
+                    File(file=file_uri, name=path_obj.name),
                     Plain(f" ⚠️ 图片发送超时/失败，已转为文件形式。")
                 ]))
         except Exception as e:
             logger.error(f"发送菜单时出错: {e}")
             try:
+                 # 如果 URI 方式失败，最后尝试用原始路径字符串保底
                  await event_obj.send(event_obj.image_result(path_str))
             except:
                  pass

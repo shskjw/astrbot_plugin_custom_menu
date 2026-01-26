@@ -115,7 +115,34 @@ def get_text_style_str(obj, style_prefix):
     return {'bold': bold, 'italic': italic, 'underline': underline}
 
 
-def draw_glass_rect(base_img: Image.Image, box: tuple, color_hex: str, alpha: int, radius: int, corner_r=15):
+def draw_glass_rect(base_img: Image.Image, box: tuple, color_hex: str, alpha: int, radius: int, corner_r=15,
+                    apply_blur=True):
+    """
+    绘制毛玻璃效果的圆角矩形
+    :param base_img: 基础图像（需要是实际有内容的图像才能看到模糊效果）
+    :param box: 矩形区域 (x1, y1, x2, y2)
+    :param color_hex: 颜色十六进制值
+    :param alpha: 透明度 (0-255)
+    :param radius: 模糊半径 (磨砂程度)
+    :param corner_r: 圆角半径
+    :param apply_blur: 是否应用模糊效果
+    """
+    x1, y1, x2, y2 = [int(v) for v in box]
+
+    # 确保坐标在图像范围内
+    img_w, img_h = base_img.size
+    x1 = max(0, min(x1, img_w))
+    y1 = max(0, min(y1, img_h))
+    x2 = max(0, min(x2, img_w))
+    y2 = max(0, min(y2, img_h))
+
+    if apply_blur and radius > 0 and x2 > x1 and y2 > y1:
+        # 裁剪出需要模糊的区域
+        region = base_img.crop((x1, y1, x2, y2))
+        blurred_region = region.filter(ImageFilter.GaussianBlur(radius=radius))
+        base_img.paste(blurred_region, (x1, y1))
+
+    # 绘制半透明的颜色叠加层
     overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     draw.rounded_rectangle(box, radius=corner_r, fill=hex_to_rgb(color_hex) + (int(alpha),))
@@ -363,6 +390,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
     title_size = s(int(menu_data.get("title_size") or 60))
     header_height = TITLE_TOP_MARGIN + title_size + s(10) + int(title_size * 0.5) + s(30)
     current_y, group_layout_info = header_height, []
+    blur_regions = []  # 收集所有需要磨砂的区域
 
     for group in menu_data.get("groups", []):
         is_free = group.get("free_mode", False)
@@ -446,7 +474,7 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
         is_text_group = g_info.get("is_text_group", False)
         
         # 使用分组自定义模糊半径或全局模糊半径
-        group_blur = get_style(grp, menu_data, 'blur_radius', 'group_blur_radius', 0)
+        group_blur = int(get_style(grp, menu_data, 'blur_radius', 'group_blur_radius', 0) or 0)
         
         # 处理分组自定义大小
         group_custom_w = grp.get("custom_width") or menu_data.get("group_custom_width")
@@ -457,10 +485,18 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
             bx2 = bx + s(int(group_custom_w))
             by2 = by + s(int(group_custom_h))
             bw = bx2 - bx
-        
+
+        # 收集磨砂区域信息，稍后在有背景时处理
+        if group_blur > 0:
+            blur_regions.append({
+                'box': (bx, by, bx2, by2),
+                'radius': group_blur,
+                'corner_r': s(15)
+            })
+        # 只绘制半透明层，不做模糊
         draw_glass_rect(overlay, (bx, by, bx2, by2), get_style(grp, menu_data, 'bg_color', 'group_bg_color', '#000000'),
                         get_style(grp, menu_data, 'bg_alpha', 'group_bg_alpha', 50),
-                        group_blur, corner_r=s(15))
+                        group_blur, corner_r=s(15), apply_blur=False)
 
         gtf = load_font(get_style(grp, menu_data, 'title_font', 'group_title_font', 'text.ttf'),
                         s(int(get_style(grp, menu_data, 'title_size', 'group_title_size', 30))))
@@ -636,12 +672,12 @@ def _render_layout(menu_data: dict, is_video_mode: bool) -> Image.Image:
                                       shadow_cfg, scale=scale)
         except:
             pass
-    return overlay
+    return overlay, blur_regions
 
 
 def render_static(menu_data: dict) -> Image.Image:
     import random
-    layout_img = _render_layout(menu_data, is_video_mode=False)
+    layout_img, blur_regions = _render_layout(menu_data, is_video_mode=False)
     fw, fh = layout_img.size
 
     scale = float(menu_data.get("export_scale", 1.0))
@@ -681,6 +717,19 @@ def render_static(menu_data: dict) -> Image.Image:
         except Exception as e:
             logger.error(f"Static BG Error: {e}")
 
+    # 新增：在背景上应用磨砂效果
+    for region in blur_regions:
+        x1, y1, x2, y2 = [int(v) for v in region['box']]
+        radius = region['radius']
+        # 确保坐标在图像范围内
+        x1 = max(0, min(x1, fw))
+        y1 = max(0, min(y1, fh))
+        x2 = max(0, min(x2, fw))
+        y2 = max(0, min(y2, fh))
+        if radius > 0 and x2 > x1 and y2 > y1:
+            cropped = final_img.crop((x1, y1, x2, y2))
+            blurred = cropped.filter(ImageFilter.GaussianBlur(radius=radius))
+            final_img.paste(blurred, (x1, y1))
     final_img.alpha_composite(layout_img)
     return final_img
 

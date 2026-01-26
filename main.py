@@ -142,36 +142,53 @@ class CustomMenuPlugin(Star):
 
         return dict(plugin_commands)
 
-    def _yield_smart_result(self, event_obj, path_str: str):
+    async def _send_smart_result(self, event_obj, path_str: str):
         try:
             size_bytes = os.path.getsize(path_str)
             size_mb = size_bytes / (1024 * 1024)
             path_obj = Path(path_str)
 
-            if size_mb > 15:
-                logger.info(f"文件体积 ({size_mb:.2f}MB) 超过15MB，转为文件发送")
-                return event_obj.chain_result([
+            # 阈值降低到 10MB (避免部分平台超时)
+            if size_mb > 10:
+                logger.info(f"文件体积 ({size_mb:.2f}MB) 超过10MB，转为文件发送")
+                await event_obj.send(event_obj.chain_result([
                     File(file=str(path_obj), name=path_obj.name),
                     Plain(f" ⚠️ 菜单文件较大({size_mb:.1f}MB)，已转为文件形式发送。")
-                ])
-            else:
-                return event_obj.image_result(str(path_obj))
+                ]).chain)
+                return
+
+            try:
+                # 尝试发送图片
+                await event_obj.send(event_obj.image_result(str(path_obj)).chain)
+            except Exception as e:
+                # 捕获超时或其他发送错误，尝试回退到文件模式
+                err_str = str(e)
+                logger.warning(f"图片发送失败: {err_str}，尝试转为文件发送")
+                await event_obj.send(event_obj.chain_result([
+                    File(file=str(path_obj), name=path_obj.name),
+                    Plain(f" ⚠️ 图片发送超时/失败，已转为文件形式。")
+                ]).chain)
         except Exception as e:
-            logger.error(f"检查文件大小时出错: {e}")
-            return event_obj.image_result(path_str)
+            logger.error(f"发送菜单时出错: {e}")
+            try:
+                 await event_obj.send(event_obj.image_result(path_str).chain)
+            except:
+                 pass
 
     async def _generate_menu_chain(self, event_obj, specific_menus=None):
         if self._init_task and not self._init_task.done():
             try:
                 await asyncio.wait_for(self._init_task, timeout=5.0)
             except:
-                yield event_obj.plain_result("⚠️ 插件初始化超时");
+                await event_obj.send(event_obj.plain_result("⚠️ 插件初始化超时").chain)
                 return
-        if not self.has_deps: yield event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}"); return
+        if not self.has_deps: 
+            await event_obj.send(event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}").chain)
+            return
 
         try:
             from .renderer.menu import render_static, render_animated
-
+            
             # 如果没有传入指定的菜单列表，则加载全部并筛选通用菜单
             target_menus = []
             if specific_menus:
@@ -219,7 +236,7 @@ class CustomMenuPlugin(Star):
                             # 所有版本都已缓存，随机选择一个
                             chosen_path = random.choice(cache_paths)
                             logger.info(f"✅ 从随机背景缓存发送: {menu_data.get('name')} ({chosen_path.name})")
-                            yield self._yield_smart_result(event_obj, str(chosen_path))
+                            await self._send_smart_result(event_obj, str(chosen_path))
                             continue
                         
                         # 需要渲染缺失的版本
@@ -239,7 +256,7 @@ class CustomMenuPlugin(Star):
                         # 随机选择一个输出
                         chosen_path = random.choice(cache_paths)
                         logger.info(f"✅ 随机选择发送: {chosen_path.name}")
-                        yield self._yield_smart_result(event_obj, str(chosen_path))
+                        await self._send_smart_result(event_obj, str(chosen_path))
                         continue
                     
                     # 非随机背景模式
@@ -248,7 +265,7 @@ class CustomMenuPlugin(Star):
 
                     if cache_path.exists():
                         logger.info(f"✅ 从缓存发送: {menu_data.get('name')}")
-                        yield self._yield_smart_result(event_obj, str(cache_path))
+                        await self._send_smart_result(event_obj, str(cache_path))
                         continue
 
                     logger.info(f"渲染菜单: {menu_data.get('name')} (模式: {'动画' if is_video_mode else '静态'})")
@@ -256,22 +273,21 @@ class CustomMenuPlugin(Star):
                     if is_video_mode:
                         result_path = await asyncio.to_thread(render_animated, menu_data, cache_path)
                         if result_path and result_path.exists():
-                            yield self._yield_smart_result(event_obj, str(result_path))
+                            await self._send_smart_result(event_obj, str(result_path))
                         else:
-                            yield event_obj.plain_result(f"❌ 动态菜单 {menu_data.get('name')} 渲染失败，请检查视频源。")
+                            await event_obj.send(event_obj.plain_result(f"❌ 动态菜单 {menu_data.get('name')} 渲染失败，请检查视频源。").chain)
                     else:
                         img = await asyncio.to_thread(render_static, menu_data)
                         await asyncio.to_thread(img.save, cache_path)
-                        yield self._yield_smart_result(event_obj, str(cache_path))
+                        await self._send_smart_result(event_obj, str(cache_path))
 
                 except Exception as e:
                     logger.error(f"渲染失败: {traceback.format_exc()}")
-                    yield event_obj.plain_result(f"❌ 渲染错误: {e}")
+                    await event_obj.send(event_obj.plain_result(f"❌ 渲染错误: {e}").chain)
                     continue
-
         except Exception as e:
             logger.error(f"生成菜单流程异常: {e}")
-            yield event_obj.plain_result(f"❌ 系统内部错误: {e}")
+            await event_obj.send(event_obj.plain_result(f"❌ 系统内部错误: {e}").chain)
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def menu_smart_check(self, event: event.AstrMessageEvent, *args, **kwargs):
@@ -300,16 +316,14 @@ class CustomMenuPlugin(Star):
         # 3. 如果匹配到特定菜单，则只发送这些菜单，不检测全局正则
         if matched_specific_menus:
             if hasattr(event, "stop_event_propagation"): event.stop_event_propagation()
-            async for res in self._generate_menu_chain(event, specific_menus=matched_specific_menus):
-                yield res
+            await self._generate_menu_chain(event, specific_menus=matched_specific_menus)
             return
 
         # 4. 如果没有匹配到特定菜单，则检测全局 Regex
         if self.regex_pattern.search(msg):
             if hasattr(event, "stop_event_propagation"): event.stop_event_propagation()
             # 传入 None 让 _generate_menu_chain 内部去筛选默认菜单 (即 trigger_keywords 为空的)
-            async for res in self._generate_menu_chain(event, specific_menus=None):
-                yield res
+            await self._generate_menu_chain(event, specific_menus=None)
 
     @filter.command("开启后台")
     async def start_web_cmd(self, event: event.AstrMessageEvent):

@@ -147,28 +147,27 @@ class CustomMenuPlugin(Star):
             path_obj = Path(path_str).resolve()
             size_bytes = os.path.getsize(path_obj)
             size_mb = size_bytes / (1024 * 1024)
-            
-            # 使用 as_uri() 转换为 file:/// 格式，兼容 NapCat 等适配器的本地文件识别
-            file_uri = path_obj.as_uri()
+
+            file_path_str = str(path_obj.resolve())
 
             # 阈值 15MB
             if size_mb > 15:
                 logger.info(f"文件体积 ({size_mb:.2f}MB) 超过15MB，转为文件发送")
                 await event_obj.send(event_obj.chain_result([
-                    File(file=file_uri, name=path_obj.name),
+                    File(file=file_path_str, name=path_obj.name),
                     Plain(f" ⚠️ 菜单文件较大({size_mb:.1f}MB)，已转为文件形式发送。")
                 ]))
                 return
 
             try:
                 # 尝试发送图片
-                await event_obj.send(event_obj.image_result(file_uri))
+                await event_obj.send(event_obj.image_result(file_path_str))
             except Exception as e:
                 # 捕获超时或其他发送错误，尝试回退到文件模式
                 err_str = str(e)
                 logger.warning(f"图片发送失败: {err_str}，尝试转为文件发送")
                 await event_obj.send(event_obj.chain_result([
-                    File(file=file_uri, name=path_obj.name),
+                    File(file=file_path_str, name=path_obj.name),
                     Plain(f" ⚠️ 图片发送超时/失败，已转为文件形式。")
                 ]))
         except Exception as e:
@@ -184,10 +183,10 @@ class CustomMenuPlugin(Star):
             try:
                 await asyncio.wait_for(self._init_task, timeout=5.0)
             except:
-                await event_obj.send(event_obj.plain_result("⚠️ 插件初始化超时").chain)
+                await event_obj.send(event_obj.plain_result("⚠️ 插件初始化超时"))
                 return
         if not self.has_deps: 
-            await event_obj.send(event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}").chain)
+            await event_obj.send(event_obj.plain_result(f"❌ 插件加载失败: {self.dep_error}"))
             return
 
         try:

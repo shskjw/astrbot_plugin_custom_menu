@@ -740,7 +740,7 @@ def render_animated(menu_data: dict, output_path: Path) -> Optional[Path]:
     write_path = output_path
 
     try:
-        foreground = _render_layout(menu_data, is_video_mode=True)
+        foreground, _ = _render_layout(menu_data, is_video_mode=True)
         cw, ch = foreground.size
 
         video_name = menu_data.get("bg_video")

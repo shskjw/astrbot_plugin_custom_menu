@@ -41,7 +41,7 @@ def _get_local_ip_sync():
 async def get_local_ip(): return await asyncio.to_thread(_get_local_ip_sync)
 
 
-@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.9.0")
+@register("astrbot_plugin_custom_menu", author="shskjw", desc="Web可视化菜单编辑器", version="1.9.1")
 class CustomMenuPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -278,7 +278,7 @@ class CustomMenuPlugin(Star):
                         if result_path and result_path.exists():
                             await self._send_smart_result(event_obj, str(result_path))
                         else:
-                            await event_obj.send(event_obj.plain_result(f"❌ 动态菜单 {menu_data.get('name')} 渲染失败，请检查视频源。").chain)
+                            await event_obj.send(event_obj.plain_result(f"❌ 动态菜单 {menu_data.get('name')} 渲染失败，请检查视频源。"))
                     else:
                         img = await asyncio.to_thread(render_static, menu_data)
                         await asyncio.to_thread(img.save, cache_path)
@@ -286,11 +286,11 @@ class CustomMenuPlugin(Star):
 
                 except Exception as e:
                     logger.error(f"渲染失败: {traceback.format_exc()}")
-                    await event_obj.send(event_obj.plain_result(f"❌ 渲染错误: {e}").chain)
+                    await event_obj.send(event_obj.plain_result(f"❌ 渲染错误: {e}"))
                     continue
         except Exception as e:
             logger.error(f"生成菜单流程异常: {e}")
-            await event_obj.send(event_obj.plain_result(f"❌ 系统内部错误: {e}").chain)
+            await event_obj.send(event_obj.plain_result(f"❌ 系统内部错误: {e}"))
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def menu_smart_check(self, event: event.AstrMessageEvent, *args, **kwargs):
